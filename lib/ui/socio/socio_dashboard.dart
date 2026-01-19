@@ -179,14 +179,14 @@ class _SocioDashboardState extends State<SocioDashboard> {
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
                 leading: const Icon(Icons.done_all, color: Colors.green),
-                title: Text(v['preguntas']['texto_pregunta']),
+                title: Text(v['preguntas']?['texto_pregunta'] ?? 'Pregunta no disponible'),
                 subtitle: Text(
                   v['opciones'] != null 
                     ? 'Opción: ${v['opciones']['texto_opcion']}' 
-                    : 'Valor: ${v['valor_numerico']}'
+                    : (v['valor_numerico'] != null ? 'Valor: ${v['valor_numerico']}' : 'Sin respuesta')
                 ),
                 trailing: Text(
-                  v['timestamp'].toString().split(' ')[0], 
+                  _formatTimestamp(v['timestamp']), 
                   style: const TextStyle(fontSize: 10, color: Colors.grey)
                 ),
               ),
@@ -195,5 +195,20 @@ class _SocioDashboardState extends State<SocioDashboard> {
         );
       },
     );
+  }
+
+  String _formatTimestamp(dynamic ts) {
+    if (ts == null) return '';
+    try {
+      final dt = DateTime.parse(ts.toString()).toLocal();
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      final year = dt.year;
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return '$day/$month/$year $hour:$minute';
+    } catch (_) {
+      return ts.toString().split('T')[0];
+    }
   }
 }

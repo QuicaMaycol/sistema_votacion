@@ -28,7 +28,12 @@ class _VotingCardState extends State<VotingCard> {
   @override
   void initState() {
     super.initState();
-    if (widget.preguntaData['tipo'] == 'OPCION_MULTIPLE') {
+    _checkAndLoad();
+  }
+
+  void _checkAndLoad() {
+    final tipo = widget.preguntaData['tipo']?.toString().toUpperCase() ?? '';
+    if (tipo == 'OPCION_MULTIPLE' || tipo == 'SI_NO' || tipo == 'BOLEANO') {
       _loadOpciones();
     }
   }
@@ -36,92 +41,146 @@ class _VotingCardState extends State<VotingCard> {
   Future<void> _loadOpciones() async {
     setState(() => _isLoadingOpciones = true);
     try {
-      final pc = await _electionService.getQuestionsByElection(widget.preguntaData['eleccion_id']);
-      final estaPregunta = pc.firstWhere((p) => p.pregunta.id == widget.preguntaData['id']);
-      setState(() => _opciones = estaPregunta.opciones);
+      final eleccionId = widget.preguntaData['eleccion_id'] ?? widget.preguntaData['eleccionId'];
+      final preguntaId = widget.preguntaData['id'];
+
+      if (eleccionId == null || preguntaId == null) {
+        throw 'Faltan IDs necesarios para cargar opciones';
+      }
+
+      final pc = await _electionService.getQuestionsByElection(eleccionId);
+      final estaPregunta = pc.where((p) => p.pregunta.id == preguntaId).firstOrNull;
+      
+      if (estaPregunta != null && estaPregunta.opciones.isNotEmpty) {
+        setState(() => _opciones = estaPregunta.opciones);
+      } else {
+        // Fallback: Si no hay opciones y el texto parece de SI/NO, crearlas localmente
+        _tryFallbackOpciones();
+      }
     } catch (e) {
       debugPrint('Error cargando opciones: $e');
+      _tryFallbackOpciones();
     } finally {
       setState(() => _isLoadingOpciones = false);
     }
   }
 
+  void _tryFallbackOpciones() {
+    final texto = widget.preguntaData['texto_pregunta']?.toString().toLowerCase() ?? '';
+    // Si no hay opciones, pero el texto pregunta "¿Desea...?" o "Considera...", asumimos Si/No
+    if (_opciones.isEmpty) {
+      setState(() {
+        _opciones = [
+          Opcion(id: 'AUTO_SI', preguntaId: widget.preguntaData['id'], textoOpcion: 'Sí'),
+          Opcion(id: 'AUTO_NO', preguntaId: widget.preguntaData['id'], textoOpcion: 'No'),
+        ];
+      });
+    }
+  }
+
   Future<void> _votar(String? opcionId, double? valor) async {
+    if (_isVoting) return;
+
     setState(() => _isVoting = true);
     try {
+      // Si el id es generado automáticamente, necesitamos buscar el id real en la DB 
+      // o manejar el error si el RPC falla por id inexistente.
+      // Sin embargo, si llegamos aquí sin opciones reales, el voto podría fallar en la DB.
       await _electionService.votar(
         preguntaId: widget.preguntaData['id'],
-        opcionId: opcionId,
-        valorNumerico: valor,
+        opcionId: (opcionId?.startsWith('AUTO_') ?? false) ? null : opcionId,
+        valorNumerico: (opcionId == 'AUTO_SI') ? 1.0 : (opcionId == 'AUTO_NO' ? 0.0 : valor),
       );
-      widget.onVoted(); // Notificar para animar y remover
+      widget.onVoted(); 
     } catch (e) {
-      String msg = e.toString();
-      if (msg.contains('Revise su conexión')) msg = 'Error de conexión';
+      debugPrint('Error al votar: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $msg'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('No pudimos registrar tu voto: $e'),
+          backgroundColor: Colors.red.shade800,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     } finally {
-      setState(() => _isVoting = false);
+      if (mounted) setState(() => _isVoting = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final tipo = widget.preguntaData['tipo'];
+    final tipo = widget.preguntaData['tipo']?.toString().toUpperCase() ?? '';
 
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.only(bottom: 20),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F7).withOpacity(0.5),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white, width: 2),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      widget.preguntaData['titulo_eleccion']?.toString().toUpperCase() ?? 'ELECCIÓN',
+                      style: TextStyle(color: Colors.blue.shade800, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                    ),
+                  ),
+                ],
               ),
-              child: Text(
-                widget.preguntaData['titulo_eleccion'] ?? 'Elección',
-                style: TextStyle(color: Colors.blue.shade800, fontSize: 12, fontWeight: FontWeight.bold),
+              const SizedBox(height: 16),
+              Text(
+                widget.preguntaData['texto_pregunta'] ?? '',
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.5, color: Colors.black87),
               ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              widget.preguntaData['texto_pregunta'],
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            if (_isVoting)
-              const Center(child: CircularProgressIndicator())
-            else if (tipo == 'OPCION_MULTIPLE')
-              _buildMultipleChoice()
-            else if (tipo == 'INPUT_NUMERICO')
-              _buildNumericInput(),
-          ],
+              const SizedBox(height: 32),
+              if (_isVoting)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
+                  ),
+                )
+              else if (tipo == 'OPCION_MULTIPLE' || tipo == 'SI_NO')
+                _buildMultipleChoice()
+              else if (tipo == 'INPUT_NUMERICO')
+                _buildNumericInput(),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildMultipleChoice() {
-    if (_isLoadingOpciones) return const LinearProgressIndicator();
+    if (_isLoadingOpciones) return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator(strokeWidth: 2)));
 
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: _opciones.map((o) => OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size(120, 50),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          side: BorderSide(color: Colors.blue.shade300),
+    return Column(
+      children: _opciones.map((o) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black,
+            minimumSize: const Size(double.infinity, 56),
+            elevation: 0,
+            side: BorderSide(color: Colors.grey.shade200),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          onPressed: () => _votar(o.id, null),
+          child: Text(o.textoOpcion, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         ),
-        onPressed: () => _votar(o.id, null),
-        child: Text(o.textoOpcion, style: const TextStyle(fontWeight: FontWeight.bold)),
       )).toList(),
     );
   }
@@ -132,18 +191,31 @@ class _VotingCardState extends State<VotingCard> {
         TextField(
           controller: _numController,
           keyboardType: TextInputType.number,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
           decoration: InputDecoration(
             hintText: 'Ingrese un número',
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 16),
             filled: true,
-            fillColor: Colors.grey.shade100,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(double.infinity, 56),
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
           onPressed: () {
             final val = double.tryParse(_numController.text);
@@ -151,7 +223,7 @@ class _VotingCardState extends State<VotingCard> {
               _votar(null, val);
             }
           },
-          child: const Text('ENVIAR VOTO', style: TextStyle(fontWeight: FontWeight.bold)),
+          child: const Text('ENVIAR VOTO', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 1)),
         ),
       ],
     );

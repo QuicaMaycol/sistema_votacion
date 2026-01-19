@@ -8,11 +8,13 @@ import 'election_control_screen.dart';
 class AdminHomeTab extends StatefulWidget {
   final String empresaId;
   final int onlineUsers;
+  final VoidCallback? onVisitSocios;
 
   const AdminHomeTab({
     super.key,
     required this.empresaId,
     required this.onlineUsers,
+    this.onVisitSocios,
   });
 
   @override
@@ -57,27 +59,66 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
 
-    return RefreshIndicator(
-      onRefresh: _loadDashboardData,
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSteveHeader(),
-            const SizedBox(height: 24),
-            _buildQuorumCard(),
-            const SizedBox(height: 24),
-            if (_activeElection != null) ...[
-              _buildActiveElectionCard(),
-              const SizedBox(height: 24),
-              _buildLeaderboardCard(),
-            ] else
-              _buildEmptyState(),
-            const SizedBox(height: 32),
-            _buildQuickActions(),
-            const SizedBox(height: 40),
+    final isMobile = MediaQuery.of(context).size.width < 900;
+    final padding = isMobile ? 24.0 : 48.0;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFFBFBFD),
+      body: RefreshIndicator(
+        onRefresh: _loadDashboardData,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 1200),
+                  padding: EdgeInsets.symmetric(horizontal: padding, vertical: 32),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSteveHeader(),
+                      const SizedBox(height: 32),
+                      
+                      // Responsive Top Section
+                      if (!isMobile)
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: _buildQuorumCard()),
+                            const SizedBox(width: 24),
+                            if (_activeElection != null)
+                              Expanded(child: _buildActiveElectionCard())
+                            else
+                              Expanded(child: _buildEmptyState()),
+                          ],
+                        )
+                      else ...[
+                        _buildQuorumCard(),
+                        const SizedBox(height: 24),
+                        if (_activeElection != null)
+                          _buildActiveElectionCard()
+                        else
+                          _buildEmptyState(),
+                      ],
+                      
+                      const SizedBox(height: 24),
+                      if (_activeElection != null)
+                        _buildLeaderboardCard(),
+                        
+                      const SizedBox(height: 48),
+                      const Text(
+                        'Acciones rápidas',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.7),
+                      ),
+                      const SizedBox(height: 20),
+                      _buildQuickActions(isMobile),
+                      const SizedBox(height: 60),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -85,140 +126,141 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
   }
 
   Widget _buildSteveHeader() {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Panel de Control',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.blueAccent, letterSpacing: 1.2),
+          DateTime.now().toString().split(' ')[0], // Simular fecha dinámica
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade500, letterSpacing: 1.2),
         ),
-        SizedBox(height: 4),
-        Text(
-          'Estado General',
-          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: -1),
+        const SizedBox(height: 4),
+        const Text(
+          'Dashboard',
+          style: TextStyle(fontSize: 34, fontWeight: FontWeight.w800, letterSpacing: -1.5, color: Colors.black),
         ),
       ],
     );
   }
 
   Widget _buildQuorumCard() {
-    return InkWell(
-      onTap: () {
-        DefaultTabController.of(context).animateTo(3);
-      },
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10)),
-          ],
-        ),
-        child: Row(
-          children: [
-            Stack(
-              alignment: Alignment.center,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            decoration: BoxDecoration(
+              color: Colors.green.shade50,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: _PulseCircle(color: Colors.green.shade400),
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+                Text(
+                  widget.onlineUsers.toString(),
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w700, color: Colors.black, letterSpacing: -1),
                 ),
-                const _PulseCircle(),
-                const Icon(Icons.people_alt_rounded, color: Colors.green, size: 30),
+                Text(
+                  'SOCIOS CONECTADOS',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500, fontWeight: FontWeight.w700, letterSpacing: 1.1),
+                ),
               ],
             ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.onlineUsers.toString(),
-                    style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: Colors.black87),
-                  ),
-                  const Text(
-                    'Socios en línea ahora',
-                    style: TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
+          ),
+          ElevatedButton(
+            onPressed: widget.onVisitSocios,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-          ],
-        ),
+            child: const Text('Ver lista', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildActiveElectionCard() {
     final e = _activeElection!;
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ElectionControlScreen(eleccion: e),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.black, // Dark mode for active item
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                child: const Text('EN VIVO', style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1)),
+              ),
+              const Icon(Icons.more_horiz, color: Colors.white54),
+            ],
           ),
-        ).then((_) => _loadDashboardData());
-      },
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.blue.shade600, Colors.blue.shade800],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+          const SizedBox(height: 20),
+          Text(
+            e.titulo,
+            style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700, letterSpacing: -0.5),
           ),
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8)),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('ELECCIÓN ACTIVA', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12)),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)),
-                  child: const Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(
+            e.descripcion ?? 'Sin descripción disponible para esta elección.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.grey.shade400, fontSize: 14, height: 1.4),
+          ),
+          const SizedBox(height: 32),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ElectionControlScreen(eleccion: e),
+                      ),
+                    ).then((_) => _loadDashboardData());
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.white24),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text('Gestionar', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              e.titulo,
-              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              e.descripcion ?? '',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Icon(Icons.timer_outlined, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
-                Text(
-                  'Finaliza: ${e.fechaFin.toString().split(' ')[0]}',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -226,22 +268,20 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
   Widget _buildLeaderboardCard() {
     if (_resultados.isEmpty) return const SizedBox.shrink();
 
-    // Obtener la pregunta con más votos
     final pc = _preguntas.first;
     final resDePregunta = _resultados.where((r) => r['pregunta_id'] == pc.pregunta.id).toList();
     
-    // Encontrar el ganador (el que tiene más total_votos)
     Map<String, dynamic>? ganador;
     if (resDePregunta.isNotEmpty) {
       resDePregunta.sort((a, b) => (b['total_votos'] as int).compareTo(a['total_votos'] as int));
       ganador = resDePregunta.first;
     }
 
-    String textoGanador = "Calculando...";
+    String textoGanador = "Sin datos";
     if (ganador != null) {
       if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE) {
         final opt = pc.opciones.firstWhere((o) => o.id == ganador!['opcion_elegida_id'], orElse: () => null as dynamic);
-        textoGanador = opt?.textoOpcion ?? "Sin votos";
+        textoGanador = opt?.textoOpcion ?? "Anónimo";
       } else {
         textoGanador = "Valor: ${ganador['valor_numerico']}";
       }
@@ -251,50 +291,47 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.grey.shade100),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TENDENCIA ACTUAL', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-          const SizedBox(height: 16),
           Row(
             children: [
-              const Icon(Icons.insights_rounded, color: Colors.blueAccent),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  pc.pregunta.textoPregunta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-              ),
+              const Icon(Icons.analytics_outlined, size: 18, color: Colors.blueAccent),
+              const SizedBox(width: 8),
+              Text('RESULTADOS PARCIALES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade500, letterSpacing: 1.2)),
             ],
           ),
           const SizedBox(height: 20),
+          Text(
+            pc.pregunta.textoPregunta,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, letterSpacing: -0.2),
+          ),
+          const SizedBox(height: 24),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Liderando:', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                    Text('Liderando', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                    const SizedBox(height: 4),
                     Text(
                       textoGanador,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Colors.black, letterSpacing: -0.5),
                     ),
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
-                child: Text(
-                  '${ganador?['total_votos'] ?? 0} Votos',
-                  style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text('${ganador?['total_votos'] ?? 0} votos', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  Text('${(_getWinnerPercentage(ganador) * 100).toInt()}% del total', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+                ],
               ),
             ],
           ),
@@ -304,8 +341,8 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
             child: LinearProgressIndicator(
               value: _getWinnerPercentage(ganador),
               backgroundColor: Colors.grey.shade100,
-              color: Colors.blue.shade400,
-              minHeight: 12,
+              color: Colors.blueAccent,
+              minHeight: 8,
             ),
           ),
         ],
@@ -324,52 +361,74 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
 
   Widget _buildEmptyState() {
     return Container(
-      padding: const EdgeInsets.all(40),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 60, horizontal: 40),
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.grey.shade100),
       ),
-      child: const Center(
-        child: Text('No hay elecciones activas en este momento.', textAlign: TextAlign.center),
+      child: Column(
+        children: [
+          Icon(Icons.inbox_rounded, size: 48, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          const Text(
+            'No hay elecciones activas',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Crea una nueva elección para comenzar a recibir votos en tiempo real.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildQuickActions() {
-    return Row(
+  Widget _buildQuickActions(bool isMobile) {
+    return GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: isMobile ? 2 : 4,
+      mainAxisSpacing: 16,
+      crossAxisSpacing: 16,
+      childAspectRatio: isMobile ? 1.5 : 1.3,
       children: [
-        _actionItem(Icons.analytics_rounded, 'Reportes', () {
-           ScaffoldMessenger.of(context).showSnackBar(
-             const SnackBar(content: Text('Generando reporte detallado de participación...'))
-           );
-        }),
-        const SizedBox(width: 16),
-        _actionItem(Icons.history_edu_rounded, 'Histórico', () {}),
-        const SizedBox(width: 16),
-        _actionItem(Icons.rocket_launch_rounded, 'Nueva', () {}),
+        _actionItem(Icons.auto_graph_rounded, 'Reportes', Colors.blue, () {}),
+        _actionItem(Icons.history_rounded, 'Historial', Colors.orange, () {}),
+        _actionItem(Icons.people_outline_rounded, 'Usuarios', Colors.purple, () {}),
+        _actionItem(Icons.settings_outlined, 'Ajustes', Colors.blueGrey, () {}),
       ],
     );
   }
 
-  Widget _actionItem(IconData icon, String label, VoidCallback onTap) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 20),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey.shade100),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: Colors.blueGrey),
-              const SizedBox(height: 8),
-              Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-            ],
-          ),
+  Widget _actionItem(IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.grey.shade100),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+          ],
         ),
       ),
     );
@@ -377,7 +436,8 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
 }
 
 class _PulseCircle extends StatefulWidget {
-  const _PulseCircle();
+  final Color color;
+  const _PulseCircle({required this.color});
 
   @override
   State<_PulseCircle> createState() => _PulseCircleState();
@@ -403,18 +463,32 @@ class _PulseCircleState extends State<_PulseCircle> with SingleTickerProviderSta
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Container(
-          width: 50 + (10 * _controller.value),
-          height: 50 + (10 * _controller.value),
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            return Container(
+              width: 20 + (30 * _controller.value),
+              height: 20 + (30 * _controller.value),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: widget.color.withOpacity(1 - _controller.value),
+              ),
+            );
+          },
+        ),
+        Container(
+          width: 12,
+          height: 12,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.green.withOpacity(1 - _controller.value), width: 2),
+            color: widget.color,
+            border: Border.all(color: Colors.white, width: 2),
           ),
-        );
-      },
+        ),
+      ],
     );
   }
 }

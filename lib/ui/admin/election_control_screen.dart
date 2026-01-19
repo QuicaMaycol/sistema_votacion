@@ -61,22 +61,37 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return DefaultTabController(
       length: 3,
       child: Scaffold(
+        backgroundColor: const Color(0xFFFBFBFD),
         appBar: AppBar(
-          title: const Text('Panel de Control'),
-          bottom: const TabBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          title: Text(
+            widget.eleccion.titulo,
+            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          bottom: TabBar(
+            labelColor: Colors.black,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: Colors.black,
+            indicatorWeight: 3,
+            indicatorSize: TabBarIndicatorSize.label,
+            dividerColor: Colors.transparent,
             tabs: [
-              Tab(icon: Icon(Icons.settings), text: 'CONTROL'),
-              Tab(icon: Icon(Icons.bar_chart), text: 'RESULTADOS'),
-              Tab(icon: Icon(Icons.people_outline), text: 'PARTICIPACIÓN'),
+              Tab(text: isMobile ? 'Control' : 'Panel de Control'),
+              Tab(text: isMobile ? 'Votos' : 'Resultados en Vivo'),
+              Tab(text: isMobile ? 'Usuarios' : 'Participación'),
             ],
           ),
         ),
         body: TabBarView(
           children: [
-            _buildControlTab(),
+            _buildControlTab(isMobile),
             _buildResultsTab(),
             _buildParticipationTab(),
           ],
@@ -85,23 +100,34 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
     );
   }
 
-  Widget _buildControlTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoCard(),
-          const SizedBox(height: 32),
-          const Text('Estructura de la Elección', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const Divider(),
-          _buildQuestionsList(),
-          const SizedBox(height: 32),
-          const Text('Acciones de Control', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const Divider(),
-          const SizedBox(height: 16),
-          _buildControlButtons(),
-        ],
+  Widget _buildControlTab(bool isMobile) {
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 900),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildInfoCard(),
+              const SizedBox(height: 40),
+              const Text(
+                'Estructura de la Elección', 
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5)
+              ),
+              const SizedBox(height: 16),
+              _buildQuestionsList(),
+              const SizedBox(height: 48),
+              const Text(
+                'Acciones de Gestión', 
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5)
+              ),
+              const SizedBox(height: 20),
+              _buildControlButtons(),
+              const SizedBox(height: 40),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -120,30 +146,63 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
         final preguntas = snapshot.data ?? [];
         if (preguntas.isEmpty) return const Padding(
           padding: EdgeInsets.all(16.0),
-          child: Text('Esta elección no tiene preguntas cargadas.'),
+          child: Text('Esta elección no tiene preguntas cargadas.', style: TextStyle(color: Colors.grey)),
         );
 
         return Column(
-          children: preguntas.map((pc) => Card(
-            margin: const EdgeInsets.only(top: 12),
-            child: ExpansionTile(
-              leading: CircleAvatar(child: Text((pc.pregunta.orden + 1).toString())),
-              title: Text(pc.pregunta.textoPregunta, style: const TextStyle(fontWeight: FontWeight.bold)),
-              subtitle: Text('Tipo: ${pc.pregunta.tipo.name}'),
-              children: [
-                if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE)
-                  ...pc.opciones.map((o) => ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.radio_button_unchecked, size: 18),
-                    title: Text(o.textoOpcion),
-                  ))
-                else if (pc.pregunta.tipo == TipoPregunta.INPUT_NUMERICO)
-                  const ListTile(
-                    dense: true,
-                    leading: Icon(Icons.numbers, size: 18),
-                    title: Text('Entrada numérica requerida'),
+          children: preguntas.map((pc) => Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                leading: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+                  child: Center(child: Text((pc.pregunta.orden + 1).toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                ),
+                title: Text(pc.pregunta.textoPregunta, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                subtitle: Text('Tipo: ${pc.pregunta.tipo.name}', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
+                    child: Column(
+                      children: [
+                        if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE)
+                          ...pc.opciones.map((o) => Container(
+                            margin: const EdgeInsets.only(bottom: 4),
+                            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
+                            child: ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: const Icon(Icons.radio_button_unchecked, size: 16, color: Colors.blueAccent),
+                              title: Text(o.textoOpcion, style: const TextStyle(fontSize: 13)),
+                            ),
+                          ))
+                        else if (pc.pregunta.tipo == TipoPregunta.INPUT_NUMERICO)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(10)),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.numbers, size: 16, color: Colors.blueAccent),
+                                SizedBox(width: 12),
+                                Text('Entrada numérica requerida', style: TextStyle(fontSize: 13)),
+                              ],
+                            ),
+                          )
+                      ],
+                    ),
                   )
-              ],
+                ],
+              ),
             ),
           )).toList(),
         );
@@ -152,24 +211,67 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
   }
 
   Widget _buildInfoCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 10)),
+        ],
+        border: Border.all(color: Colors.grey.shade100),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.eleccion.titulo, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('DETALLES GENERALES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade500, letterSpacing: 1.2)),
+                _statusBadge(_estadoActual),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(widget.eleccion.titulo, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
             const SizedBox(height: 8),
-            Text(widget.eleccion.descripcion ?? 'Sin descripción', style: const TextStyle(color: Colors.grey)),
-            const Divider(height: 32),
-            _infoRow(Icons.info_outline, 'Estado actual', _estadoActual.name.toUpperCase(), _getStatusColor(_estadoActual)),
-            _infoRow(Icons.calendar_today, 'Inicio', widget.eleccion.fechaInicio.toString().split('.')[0]),
-            _infoRow(Icons.calendar_today_outlined, 'Fin', widget.eleccion.fechaFin.toString().split('.')[0]),
+            Text(widget.eleccion.descripcion ?? 'Sin descripción', style: TextStyle(color: Colors.grey.shade600, height: 1.4)),
+            const Divider(height: 48, color: Color(0xFFF5F5F7)),
+            Row(
+              children: [
+                Expanded(child: _infoItem(Icons.calendar_today_rounded, 'Inicio', widget.eleccion.fechaInicio.toString().split('.')[0])),
+                Expanded(child: _infoItem(Icons.calendar_today_outlined, 'Fin', widget.eleccion.fechaFin.toString().split('.')[0])),
+              ],
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _statusBadge(EstadoEleccion estado) {
+    Color color = _getStatusColor(estado);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+      child: Text(estado.name.toUpperCase(), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+    );
+  }
+
+  Widget _infoItem(IconData icon, String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: Colors.grey),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade500, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+      ],
     );
   }
 
@@ -191,47 +293,69 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
     if (_isUpdating) return const Center(child: CircularProgressIndicator());
 
     if (_estadoActual == EstadoEleccion.BORRADOR) {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade100)),
+        child: Column(
+          children: [
+            const Text('Esta elección está en modo borrador. Los socios no pueden verla ni votar aún.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.green)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 56),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              onPressed: () => _changeStatus(EstadoEleccion.ACTIVA),
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('ACTIVAR ELECCIÓN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            ),
+          ],
         ),
-        onPressed: () => _changeStatus(EstadoEleccion.ACTIVA),
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('ACTIVAR ELECCIÓN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       );
     }
 
     if (_estadoActual == EstadoEleccion.ACTIVA) {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.orange.shade800,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 56),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange.shade100)),
+        child: Column(
+          children: [
+            const Text('La elección está en curso. Al finalizarla, se cerrará el acceso a votación permanently.', textAlign: TextAlign.center, style: TextStyle(fontSize: 13, color: Colors.orange)),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange.shade800,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 56),
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              onPressed: () => _changeStatus(EstadoEleccion.FINALIZADA),
+              icon: const Icon(Icons.stop_rounded),
+              label: const Text('FINALIZAR ELECCIÓN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+            ),
+          ],
         ),
-        onPressed: () => _changeStatus(EstadoEleccion.FINALIZADA),
-        icon: const Icon(Icons.stop),
-        label: const Text('FINALIZAR ELECCIÓN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       );
     }
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: Colors.blueGrey.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.shade200),
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(24),
       ),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Column(
         children: [
-          Icon(Icons.check_circle_outline, color: Colors.blueGrey),
-          SizedBox(width: 12),
-          Text('ESTA ELECCIÓN HA FINALIZADO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+          Icon(Icons.check_circle_rounded, color: Colors.grey.shade400, size: 40),
+          const SizedBox(height: 16),
+          const Text('ELECCIÓN FINALIZADA', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.black, fontSize: 16, letterSpacing: 1)),
+          const SizedBox(height: 8),
+          const Text('Ya no se aceptan más votos para esta elección.', style: TextStyle(color: Colors.grey, fontSize: 13)),
         ],
       ),
     );
@@ -289,8 +413,24 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
       future: _electionService.getParticipationReport(widget.eleccion.id),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-        final data = snapshot.data ?? [];
+        final rawData = snapshot.data ?? [];
 
+        // Deduplicar: cada socio debe aparecer una sola vez
+        final Map<String, Map<String, dynamic>> uniqueUsers = {};
+        for (var row in rawData) {
+          final userId = row['usuario_id'] ?? row['nombre_usuario'];
+          if (!uniqueUsers.containsKey(userId)) {
+            uniqueUsers[userId] = Map<String, dynamic>.from(row);
+          } else {
+            // Si ya existe y el actual dice que ha votado, actualizamos (por seguridad)
+            if (row['ha_votado'] == true) {
+              uniqueUsers[userId]!['ha_votado'] = true;
+              uniqueUsers[userId]!['fecha_voto'] = row['fecha_voto'];
+            }
+          }
+        }
+
+        final data = uniqueUsers.values.toList();
         int votaron = data.where((u) => u['ha_votado'] == true).length;
         int faltan = data.length - votaron;
 
@@ -301,8 +441,8 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _statCard('VOTARON', votaron.toString(), Colors.green),
-                  _statCard('FALTAN', faltan.toString(), Colors.orange),
+                  _statCard('SOCIOS PARTICIPARON', votaron.toString(), Colors.green),
+                  _statCard('SOCIOS PENDIENTES', faltan.toString(), Colors.orange),
                 ],
               ),
             ),
@@ -321,7 +461,9 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
                       ),
                     ),
                     title: Text(u['nombre_usuario']),
-                    subtitle: Text(u['ha_votado'] ? 'Votó el ${u['fecha_voto'].toString().split('T')[0]}' : 'Pendiente'),
+                    subtitle: Text(u['ha_votado'] 
+                      ? 'Participó el ${u['fecha_voto'].toString().split('T')[0]}' 
+                      : 'Aún no ha participado'),
                   );
                 },
               ),

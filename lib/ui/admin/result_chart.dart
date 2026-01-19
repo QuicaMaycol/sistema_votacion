@@ -97,7 +97,9 @@ class ResultChart extends StatelessWidget {
 
       if (pregunta.tipo.name == 'OPCION_MULTIPLE') {
          // Buscar por ID de opción correspondiente al label
-         final opcionObj = opciones.firstWhere((o) => o['texto_opcion'] == label, orElse: () => null);
+         final matches = opciones.where((o) => o['texto_opcion'] == label);
+         final opcionObj = matches.isEmpty ? null : matches.first;
+
          if (opcionObj != null) {
            final r = resultados.firstWhere(
              (res) => res['opcion_elegida_id'] == opcionObj['id'], 
