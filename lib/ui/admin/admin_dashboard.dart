@@ -310,7 +310,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                       ),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _actionIconButton(
+                          Icons.delete_outline_rounded,
+                          Colors.red,
+                          () async {
+                            final hasVotes = await _electionService.hasVotes(e.id);
+                            if (hasVotes) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('No se puede eliminar una elección que ya tiene votos registrados.'),
+                                    backgroundColor: Colors.orange,
+                                  ),
+                                );
+                              }
+                            } else {
+                              _confirmDeleteElection(e);
+                            }
+                          },
+                        ),
+                        const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                      ],
+                    ),
                     onTap: () {
                       Navigator.push(
                         context,
@@ -326,6 +350,33 @@ class _AdminDashboardState extends State<AdminDashboard> {
           ),
         );
       },
+    );
+  }
+
+  void _confirmDeleteElection(Eleccion e) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Elección'),
+        content: Text('¿Estás seguro de que deseas eliminar "${e.titulo}"? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _electionService.deleteElection(e.id);
+                Navigator.pop(context);
+                setState(() {});
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Elección eliminada exitosamente')));
+              } catch (err) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al eliminar: $err')));
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
     );
   }
 

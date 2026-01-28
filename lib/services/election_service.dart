@@ -168,21 +168,20 @@ class ElectionService {
       print('DEBUG: Historial respuesta RAW data: $response');
       
       return List<Map<String, dynamic>>.from(response).map((row) {
-    // La UI espera: preguntas(texto_pregunta), opciones(texto_opcion)...
-    // La RPC devuelve plano: texto_pregunta, texto_opcion.
-    // Hacemos una transformación simple.
-    
-    return List<Map<String, dynamic>>.from(response).map((row) {
-      return {
-        'id': row['id'],
-        'timestamp': row['fecha_voto'], // Mapeamos de vuelta al nombre que espera la UI
-        'preguntas': {'texto_pregunta': row['texto_pregunta']},
-        'opciones': {
-          'texto_opcion': row['texto_opcion'] ?? row['nombre_candidato'] ?? (row['valor_numerico']?.toString() ?? '-')
-        },
-        'valor_numerico': row['valor_numerico'],
-      };
-    }).toList();
+        return {
+          'id': row['id'],
+          'timestamp': row['fecha_voto'],
+          'preguntas': {'texto_pregunta': row['texto_pregunta']},
+          'opciones': {
+            'texto_opcion': row['texto_opcion'] ?? row['nombre_candidato'] ?? (row['valor_numerico']?.toString() ?? '-')
+          },
+          'valor_numerico': row['valor_numerico'],
+        };
+      }).toList();
+    } catch (e) {
+      print('DEBUG: Error en getMyVoteHistory: $e');
+      rethrow;
+    }
   }
 
   /// Fase 5: Obtener resultados agrupados (Anónimos)
@@ -296,5 +295,15 @@ class ElectionService {
     // Si la BD tiene ON DELETE CASCADE, esto borrará opciones y candidatos automáticamente.
     // Si no, habría que borrar hijos primero. Asumiremos CASCADE por consistencia con Supabase.
     await _client.schema('votaciones').from('preguntas').delete().eq('id', preguntaId);
+  }
+
+  Future<bool> hasVotes(String electionId) async {
+    final results = await getResultsByElection(electionId);
+    return results.any((r) => (r['total_votos'] ?? 0) > 0);
+  }
+
+  Future<void> deleteElection(String electionId) async {
+    // Asumimos ON DELETE CASCADE en la base de datos para borrar preguntas, votos, etc.
+    await _client.schema('votaciones').from('elecciones').delete().eq('id', electionId);
   }
 }

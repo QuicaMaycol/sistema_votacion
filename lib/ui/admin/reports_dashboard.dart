@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../services/election_service.dart';
 import '../../models/eleccion_pregunta.dart';
+import '../../models/enums.dart';
+import 'package:excel/excel.dart' hide Border;
+import 'dart:typed_data';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 class ReportsDashboard extends StatefulWidget {
   final String empresaId;
@@ -37,7 +42,15 @@ class _ReportsDashboardState extends State<ReportsDashboard> with SingleTickerPr
       setState(() {
         _elecciones = data;
         if (data.isNotEmpty) {
-          _selectedEleccionId = data.first.id;
+          // Priorizar elección ACTIVA, luego BORRADOR, luego la primera de la lista
+          final bestElection = data.firstWhere(
+            (e) => e.estado == EstadoEleccion.ACTIVA,
+            orElse: () => data.firstWhere(
+              (e) => e.estado == EstadoEleccion.BORRADOR,
+              orElse: () => data.first
+            ),
+          );
+          _selectedEleccionId = bestElection.id;
           _loadReports(_selectedEleccionId!);
         } else {
           _isLoading = false;
@@ -75,6 +88,14 @@ class _ReportsDashboardState extends State<ReportsDashboard> with SingleTickerPr
         backgroundColor: Colors.white,
         elevation: 1,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [
+          IconButton(
+            onPressed: _isLoading ? null : _exportToExcel,
+            icon: const Icon(Icons.download_rounded, color: Colors.green),
+            tooltip: 'Descargar Excel',
+          ),
+          const SizedBox(width: 8),
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.blueAccent,
@@ -221,10 +242,10 @@ class _ReportsDashboardState extends State<ReportsDashboard> with SingleTickerPr
   Widget _buildResultadosTab() {
     if (_resultados.isEmpty) return const Center(child: Text('No hay resultados registrados aún.'));
 
-    // Agrupar por pregunta
+    // Agrupar por pregunta para evitar duplicados visuales por cada opción
     final preguntas = <String, List<Map<String, dynamic>>>{};
     for (var r in _resultados) {
-      final key = r['texto_pregunta'] as String;
+      final key = (r['texto_pregunta'] ?? 'Sin título').toString();
       if (!preguntas.containsKey(key)) preguntas[key] = [];
       preguntas[key]!.add(r);
     }
@@ -270,5 +291,65 @@ class _ReportsDashboardState extends State<ReportsDashboard> with SingleTickerPr
         );
       }).toList(),
     );
+  }
+
+  Future<void> _exportToExcel() async {
+    if (_selectedEleccionId == null) return;
+    
+    final eleccion = _elecciones.firstWhere((e) => e.id == _selectedEleccionId);
+    
+    var excel = Excel.createExcel();
+    
+    // 1. Hoja de Participación
+    Sheet participationSheet = excel['Participación'];
+    excel.delete('Sheet1'); // Eliminar hoja por defecto
+    
+    participationSheet.appendRow([
+      TextCellValue('Nombre del Socio'),
+      TextCellValue('DNI'),
+      TextCellValue('Estado de Votación'),
+      TextCellValue('Preguntas Respondidas'),
+      TextCellValue('Total Preguntas')
+    ]);
+    for (var row in _avance) {
+      participationSheet.appendRow([
+        TextCellValue(row['nombre']?.toString() ?? ''),
+        TextCellValue(row['dni']?.toString() ?? ''),
+        TextCellValue(row['estado']?.toString() ?? ''),
+        IntCellValue(int.tryParse(row['preguntas_respondidas']?.toString() ?? '0') ?? 0),
+        IntCellValue(int.tryParse(row['total_preguntas']?.toString() ?? '0') ?? 0)
+      ]);
+    }
+
+    // 2. Hoja de Resultados
+    Sheet resultsSheet = excel['Resultados'];
+    resultsSheet.appendRow([
+      TextCellValue('Pregunta'),
+      TextCellValue('Opción / Candidato / Valor'),
+      TextCellValue('Votos Recibidos')
+    ]);
+    
+    for (var row in _resultados) {
+      resultsSheet.appendRow([
+        TextCellValue(row['texto_pregunta']?.toString() ?? 'Sin título'),
+        TextCellValue(row['texto_opcion']?.toString() ?? row['valor_numerico']?.toString() ?? '-'),
+        IntCellValue(int.tryParse(row['conteo']?.toString() ?? '0') ?? 0)
+      ]);
+    }
+
+    // Guardar y descargar (Web)
+    final List<int>? fileBytes = excel.save();
+    if (fileBytes != null) {
+      final blob = html.Blob([Uint8List.fromList(fileBytes)]);
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute("download", "Reporte_${eleccion.titulo.replaceAll(' ', '_')}.xlsx")
+        ..click();
+      html.Url.revokeObjectUrl(url);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Reporte generado y listo para descargar'))
+      );
+    }
   }
 }

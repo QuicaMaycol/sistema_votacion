@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/eleccion_pregunta.dart';
 import '../../models/enums.dart';
+import '../../models/opcion_voto.dart';
 import '../../services/election_service.dart';
 import 'result_chart.dart';
 import 'election_control_screen.dart';
@@ -35,30 +36,39 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
   }
 
   Future<void> _loadDashboardData() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
+    
     try {
       final elections = await _electionService.getElections(widget.empresaId);
+      
+      Eleccion? foundElection;
+      List<PreguntaCompleta> foundQuestions = [];
+      List<Map<String, dynamic>> foundResults = [];
+
       if (elections.isNotEmpty) {
-        // Buscar la primera elección activa, si no borrador, si no la primera (más reciente)
-        _activeElection = elections.firstWhere(
+        foundElection = elections.firstWhere(
           (e) => e.estado == EstadoEleccion.ACTIVA,
           orElse: () => elections.firstWhere(
             (e) => e.estado == EstadoEleccion.BORRADOR, 
             orElse: () => elections.first
           ),
         );
-      } else {
-        _activeElection = null;
+        
+        foundQuestions = await _electionService.getQuestionsByElection(foundElection.id);
+        foundResults = await _electionService.getResultsByElection(foundElection.id);
       }
 
-      if (_activeElection != null) {
-        _preguntas = await _electionService.getQuestionsByElection(_activeElection!.id);
-        _resultados = await _electionService.getResultsByElection(_activeElection!.id);
-      }
+      if (!mounted) return;
+      setState(() {
+        _activeElection = foundElection;
+        _preguntas = foundQuestions;
+        _resultados = foundResults;
+      });
     } catch (e) {
       debugPrint('Error en Dashboard: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -286,11 +296,13 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
 
     String textoGanador = "Sin datos";
     if (ganador != null) {
-      if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE) {
-        final opt = pc.opciones.firstWhere((o) => o.id == ganador!['opcion_elegida_id'], orElse: () => null as dynamic);
+      if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE || pc.pregunta.tipo == TipoPregunta.CANDIDATOS) {
+        final optId = ganador!['opcion_elegida_id'];
+        final opcionesCoincidentes = pc.opciones.where((o) => o.id == optId).toList();
+        final Opcion? opt = opcionesCoincidentes.isNotEmpty ? opcionesCoincidentes.first : null;
         textoGanador = opt?.textoOpcion ?? "Anónimo";
       } else {
-        textoGanador = "Valor: ${ganador['valor_numerico']}";
+        textoGanador = "Valor: ${ganador['valor_numerico'] ?? '-'}";
       }
     }
 
@@ -416,7 +428,7 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -434,7 +446,14 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
               decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
               child: Icon(icon, color: color, size: 20),
             ),
-            Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87)),
+            const SizedBox(height: 4),
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black87),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
       ),
