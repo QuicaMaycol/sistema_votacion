@@ -25,9 +25,14 @@ class AdminHomeTab extends StatefulWidget {
 class _AdminHomeTabState extends State<AdminHomeTab> {
   final _electionService = ElectionService();
   bool _isLoading = true;
-  Eleccion? _activeElection;
+  List<Eleccion> _allElections = [];
+  int _selectedElectionIndex = 0;
   List<PreguntaCompleta> _preguntas = [];
   List<Map<String, dynamic>> _resultados = [];
+
+  Eleccion? get _activeElection => _allElections.isNotEmpty && _selectedElectionIndex < _allElections.length 
+      ? _allElections[_selectedElectionIndex] 
+      : null;
 
   @override
   void initState() {
@@ -42,26 +47,31 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
     try {
       final elections = await _electionService.getElections(widget.empresaId);
       
-      Eleccion? foundElection;
+      List<Eleccion> activeOrDrafts = elections.where(
+        (e) => e.estado == EstadoEleccion.ACTIVA || e.estado == EstadoEleccion.BORRADOR
+      ).toList();
+
+      if (activeOrDrafts.isEmpty && elections.isNotEmpty) {
+        activeOrDrafts = [elections.first];
+      }
+
       List<PreguntaCompleta> foundQuestions = [];
       List<Map<String, dynamic>> foundResults = [];
 
-      if (elections.isNotEmpty) {
-        foundElection = elections.firstWhere(
-          (e) => e.estado == EstadoEleccion.ACTIVA,
-          orElse: () => elections.firstWhere(
-            (e) => e.estado == EstadoEleccion.BORRADOR, 
-            orElse: () => elections.first
-          ),
-        );
+      if (activeOrDrafts.isNotEmpty) {
+        // Asegurar que el índice seleccionado sea válido
+        if (_selectedElectionIndex >= activeOrDrafts.length) {
+          _selectedElectionIndex = 0;
+        }
         
-        foundQuestions = await _electionService.getQuestionsByElection(foundElection.id);
-        foundResults = await _electionService.getResultsByElection(foundElection.id);
+        final selected = activeOrDrafts[_selectedElectionIndex];
+        foundQuestions = await _electionService.getQuestionsByElection(selected.id);
+        foundResults = await _electionService.getResultsByElection(selected.id);
       }
 
       if (!mounted) return;
       setState(() {
-        _activeElection = foundElection;
+        _allElections = activeOrDrafts;
         _preguntas = foundQuestions;
         _resultados = foundResults;
       });
@@ -70,6 +80,13 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _onElectionSelected(int index) {
+    setState(() {
+      _selectedElectionIndex = index;
+    });
+    _loadDashboardData();
   }
 
   @override
@@ -96,6 +113,11 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
                     children: [
                       _buildSteveHeader(),
                       const SizedBox(height: 32),
+
+                      if (_allElections.length > 1) ...[
+                        _buildElectionSelector(),
+                        const SizedBox(height: 24),
+                      ],
                       
                       // Responsive Top Section
                       if (!isMobile)
@@ -120,8 +142,14 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
                       ],
                       
                       const SizedBox(height: 24),
-                      if (_activeElection != null)
-                        _buildLeaderboardCard(),
+                      if (_activeElection != null) ...[
+                        const Text(
+                          'Resultados por pregunta',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildResultsList(),
+                      ],
                         
                       const SizedBox(height: 48),
                       const Text(
@@ -282,10 +310,53 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
     );
   }
 
-  Widget _buildLeaderboardCard() {
-    if (_resultados.isEmpty || _preguntas.isEmpty) return const SizedBox.shrink();
+  Widget _buildElectionSelector() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(_allElections.length, (index) {
+          final isSelected = _selectedElectionIndex == index;
+          final e = _allElections[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: ChoiceChip(
+              label: Text(e.titulo),
+              selected: isSelected,
+              onSelected: (selected) {
+                if (selected) _onElectionSelected(index);
+              },
+              selectedColor: Colors.black,
+              backgroundColor: Colors.white,
+              labelStyle: TextStyle(
+                color: isSelected ? Colors.white : Colors.black87,
+                fontWeight: FontWeight.bold,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: isSelected ? Colors.black : Colors.grey.shade300),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
 
-    final pc = _preguntas.first;
+  Widget _buildResultsList() {
+    if (_preguntas.isEmpty) return const SizedBox.shrink();
+    
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _preguntas.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        return _buildQuestionResultCard(_preguntas[index]);
+      },
+    );
+  }
+
+  Widget _buildQuestionResultCard(PreguntaCompleta pc) {
     final resDePregunta = _resultados.where((r) => r['pregunta_id'] == pc.pregunta.id).toList();
     
     Map<String, dynamic>? ganador;
@@ -320,7 +391,7 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
             children: [
               const Icon(Icons.analytics_outlined, size: 18, color: Colors.blueAccent),
               const SizedBox(width: 8),
-              Text('RESULTADOS PARCIALES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade500, letterSpacing: 1.2)),
+              Text('PREGUNTA ${pc.pregunta.orden ?? ""}', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.grey.shade500, letterSpacing: 1.2)),
             ],
           ),
           const SizedBox(height: 20),

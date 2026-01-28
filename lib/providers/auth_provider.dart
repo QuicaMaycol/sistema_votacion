@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../repositories/auth_repository.dart';
 import '../models/perfil_empresa.dart';
+import '../services/auth_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthRepository _authRepo = AuthRepository();
@@ -100,6 +101,12 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final userId = _currentProfile?.id;
+    if (userId != null) {
+      final authService = AuthService();
+      await authService.removeHeartbeat(userId);
+    }
+    
     await _authRepo.signOut();
     _currentProfile = null;
     notifyListeners();

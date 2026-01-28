@@ -235,4 +235,13 @@ class AuthService {
         .order('nombre');
     return List<Map<String, dynamic>>.from(data);
   }
+
+  /// Elimina el rastro de conexión (presencia)
+  Future<void> removeHeartbeat(String userId) async {
+    try {
+      await _client.rpc('eliminar_heartbeat', params: {'p_user_id': userId});
+    } catch (e) {
+      debugPrint('Error eliminando heartbeat: $e');
+    }
+  }
 }

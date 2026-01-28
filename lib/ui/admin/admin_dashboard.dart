@@ -62,8 +62,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (profile == null) return;
 
     try {
-      // Buscamos heartbeats de los últimos 90 segundos (margen amplio)
-      final limitTime = DateTime.now().subtract(const Duration(seconds: 90)).toIso8601String();
+      // Buscamos heartbeats de los últimos 45 segundos (con margen de 3 ciclos)
+      final limitTime = DateTime.now().subtract(const Duration(seconds: 45)).toIso8601String();
       
       final data = await Supabase.instance.client
           .from('presence_heartbeat')
