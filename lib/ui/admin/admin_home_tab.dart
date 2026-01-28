@@ -38,11 +38,18 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
     setState(() => _isLoading = true);
     try {
       final elections = await _electionService.getElections(widget.empresaId);
-      // Buscar la primera elección activa
-      _activeElection = elections.firstWhere(
-        (e) => e.estado == EstadoEleccion.ACTIVA,
-        orElse: () => elections.firstWhere((e) => e.estado == EstadoEleccion.BORRADOR, orElse: () => elections.first),
-      );
+      if (elections.isNotEmpty) {
+        // Buscar la primera elección activa, si no borrador, si no la primera (más reciente)
+        _activeElection = elections.firstWhere(
+          (e) => e.estado == EstadoEleccion.ACTIVA,
+          orElse: () => elections.firstWhere(
+            (e) => e.estado == EstadoEleccion.BORRADOR, 
+            orElse: () => elections.first
+          ),
+        );
+      } else {
+        _activeElection = null;
+      }
 
       if (_activeElection != null) {
         _preguntas = await _electionService.getQuestionsByElection(_activeElection!.id);
@@ -266,7 +273,7 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
   }
 
   Widget _buildLeaderboardCard() {
-    if (_resultados.isEmpty) return const SizedBox.shrink();
+    if (_resultados.isEmpty || _preguntas.isEmpty) return const SizedBox.shrink();
 
     final pc = _preguntas.first;
     final resDePregunta = _resultados.where((r) => r['pregunta_id'] == pc.pregunta.id).toList();

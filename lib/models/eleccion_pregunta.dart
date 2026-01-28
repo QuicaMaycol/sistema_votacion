@@ -80,9 +80,11 @@ class Pregunta {
 class PreguntaCompleta {
   Pregunta pregunta;
   List<Opcion> opciones;
+  List<Map<String, dynamic>>? candidatesData;
 
   PreguntaCompleta({
     required this.pregunta,
     this.opciones = const [],
+    this.candidatesData,
   });
 }

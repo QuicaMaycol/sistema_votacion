@@ -1,7 +1,7 @@
 enum RolUsuario { ADMIN, SOCIO, GERENCIA }
 enum EstadoUsuario { PENDIENTE, ACTIVO, BLOQUEADO }
 enum EstadoEleccion { BORRADOR, ACTIVA, FINALIZADA }
-enum TipoPregunta { OPCION_MULTIPLE, INPUT_NUMERICO }
+enum TipoPregunta { OPCION_MULTIPLE, INPUT_NUMERICO, CANDIDATOS }
 
 extension RolUsuarioX on RolUsuario {
   String toShortString() => toString().split('.').last;

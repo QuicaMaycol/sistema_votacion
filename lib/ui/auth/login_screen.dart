@@ -18,8 +18,10 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     setState(() => _isLoading = true);
     try {
+      String inputUser = _emailController.text.trim();
+      
       await context.read<AuthProvider>().login(
-        _emailController.text.trim(),
+        inputUser,
         _passwordController.text.trim(),
       );
     } catch (e) {
@@ -50,12 +52,21 @@ class _LoginScreenState extends State<LoginScreen> {
               const SizedBox(height: 32),
               TextField(
                 controller: _emailController,
-                decoration: const InputDecoration(labelText: 'Email'),
+                decoration: const InputDecoration(
+                  labelText: 'DNI / Código de Socio',
+                  prefixIcon: Icon(Icons.person_outline),
+                  hintText: 'Ingresa tu número de DNI',
+                ),
+                keyboardType: TextInputType.number, 
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
+                decoration: const InputDecoration(
+                  labelText: 'Contraseña',
+                  hintText: 'Ingresa tu contraseña (inicialmente tu DNI)',
+                  prefixIcon: Icon(Icons.lock_outline),
+                ),
                 obscureText: true,
               ),
               const SizedBox(height: 32),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -14,45 +15,73 @@ class SocioDashboard extends StatefulWidget {
 
 class _SocioDashboardState extends State<SocioDashboard> {
   final _electionService = ElectionService();
-  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+  final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>(); 
   List<Map<String, dynamic>> _preguntas = [];
   bool _isLoading = true;
-  late RealtimeChannel _presenceChannel;
+  bool _isConnected = false;
+  String _debugStatus = 'Iniciando...';
+  String _clientLog = '';
+  Timer? _heartbeatTimer;
 
   @override
   void initState() {
     super.initState();
     _loadData();
-    _initPresence();
+    _startHeartbeat();
   }
 
-  void _initPresence() {
+  void _startHeartbeat() {
+    // Primera ejecución inmediata
+    _sendHeartbeat();
+    // Repetir cada 15 segundos
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 15), (_) => _sendHeartbeat());
+  }
+
+  Future<void> _sendHeartbeat() async {
     final client = Supabase.instance.client;
     final profile = context.read<AuthProvider>().currentProfile;
     if (profile == null) return;
 
-    _presenceChannel = client.channel('quorum:${profile.empresaId}');
-    _presenceChannel.subscribe((status, [error]) async {
-      if (status == RealtimeSubscribeStatus.subscribed) {
-        await _presenceChannel.track({
-          'user_id': profile.id,
-          'nombre': profile.nombre,
-          'online_at': DateTime.now().toIso8601String(),
+    try {
+      await client.rpc('registrar_heartbeat', params: {
+        'p_user_id': profile.id,
+        'p_metadata': {'nombre': profile.nombre, 'empresa_id': profile.empresaId}
+      });
+      
+      if (mounted) {
+         setState(() {
+           _isConnected = true;
+           _debugStatus = 'Heartbeat OK: ${DateTime.now().hour}:${DateTime.now().minute}:${DateTime.now().second}';
+         });
+      }
+    } catch (e) {
+      debugPrint('Heartbeat Error: $e');
+      if (mounted) {
+        setState(() {
+           _isConnected = false;
+           _debugStatus = 'Error: $e';
+           _clientLog = e.toString();
         });
       }
-    });
+    }
   }
 
   @override
   void dispose() {
-    _presenceChannel.unsubscribe();
+    _heartbeatTimer?.cancel();
     super.dispose();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _electionService.getPendingQuestionsForSocio();
+      final profile = context.read<AuthProvider>().currentProfile;
+      if (profile == null) {
+        // Si por alguna razón no hay perfil, no podemos cargar datos
+        setState(() => _preguntas = []);
+        return;
+      }
+      final data = await _electionService.getPendingQuestionsForSocio(profile.id);
       setState(() => _preguntas = data);
     } catch (e) {
       debugPrint('Error: $e');
@@ -62,9 +91,6 @@ class _SocioDashboardState extends State<SocioDashboard> {
   }
 
   void _onVoted(int index) {
-    // 1. Mostrar Confeti o Feedback visual si se desea (opcional)
-    
-    // 2. Animar desaparición
     final removedItem = _preguntas[index];
     _listKey.currentState?.removeItem(
       index,
@@ -75,7 +101,6 @@ class _SocioDashboardState extends State<SocioDashboard> {
       duration: const Duration(milliseconds: 500),
     );
 
-    // 3. Remover de la lista real
     setState(() {
       _preguntas.removeAt(index);
     });
@@ -88,7 +113,6 @@ class _SocioDashboardState extends State<SocioDashboard> {
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<AuthProvider>().currentProfile;
@@ -106,6 +130,25 @@ class _SocioDashboardState extends State<SocioDashboard> {
             ],
           ),
           actions: [
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: _isConnected ? Colors.green.shade100 : Colors.red.shade100,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                children: [
+                  Icon(_isConnected ? Icons.wifi : Icons.wifi_off, size: 16, color: _isConnected ? Colors.green.shade800 : Colors.red.shade800),
+                  const SizedBox(width: 6),
+                  Text(
+                    _isConnected ? 'Conectado' : 'Desconectado', 
+                    style: TextStyle(color: _isConnected ? Colors.green.shade800 : Colors.red.shade800, fontSize: 12, fontWeight: FontWeight.bold)
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
             IconButton(
               onPressed: () => context.read<AuthProvider>().logout(),
               icon: const Icon(Icons.logout),
@@ -162,8 +205,11 @@ class _SocioDashboardState extends State<SocioDashboard> {
   }
 
   Widget _buildHistoryList() {
+    final profile = context.read<AuthProvider>().currentProfile;
+    if (profile == null) return const Center(child: Text('No identificado'));
+
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _electionService.getMyVoteHistory(),
+      future: _electionService.getMyVoteHistory(profile.id),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
         final data = snapshot.data ?? [];

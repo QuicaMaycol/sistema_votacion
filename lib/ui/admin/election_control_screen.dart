@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
+import 'dart:convert';
+import 'dart:io';
 import '../../models/eleccion_pregunta.dart';
 import '../../models/enums.dart';
+import '../../models/opcion_voto.dart';
 import '../../services/election_service.dart';
 import 'result_chart.dart';
 
@@ -56,6 +61,43 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
       }
     } finally {
       setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _confirmDeleteQuestion(String preguntaId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Pregunta'),
+        content: const Text(
+          '¿Estás seguro de eliminar esta pregunta?\n\n'
+          '⚠️ Se eliminarán también todas las opciones y candidatos asociados.\n'
+          'Esta acción no se puede deshacer.',
+          style: TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Eliminar', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _electionService.deleteQuestion(preguntaId);
+        setState(() {}); // Refresh list
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pregunta eliminada')));
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        }
+      }
     }
   }
 
@@ -166,7 +208,16 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
                   decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
                   child: Center(child: Text((pc.pregunta.orden + 1).toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
                 ),
-                title: Text(pc.pregunta.textoPregunta, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                title: Row(
+                  children: [
+                    Expanded(child: Text(pc.pregunta.textoPregunta, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.grey, size: 20),
+                      onPressed: () => _confirmDeleteQuestion(pc.pregunta.id),
+                      tooltip: 'Eliminar Pregunta',
+                    )
+                  ],
+                ),
                 subtitle: Text('Tipo: ${pc.pregunta.tipo.name}', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
                 collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -198,6 +249,21 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
                               ],
                             ),
                           )
+                        else if (pc.pregunta.tipo == TipoPregunta.CANDIDATOS)
+                          ...pc.opciones.map((o) => Container(
+                            margin: const EdgeInsets.only(bottom: 4),
+                            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(10)),
+                            child: ListTile(
+                              dense: true,
+                              visualDensity: VisualDensity.compact,
+                              leading: const CircleAvatar(
+                                radius: 12,
+                                backgroundColor: Colors.blue,
+                                child: Icon(Icons.person, size: 14, color: Colors.white),
+                              ),
+                              title: Text(o.textoOpcion, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+                            ),
+                          ))
                       ],
                     ),
                   )
@@ -312,6 +378,17 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
               icon: const Icon(Icons.play_arrow_rounded),
               label: const Text('ACTIVAR ELECCIÓN', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
             ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                side: BorderSide(color: Colors.green.shade200),
+              ),
+              onPressed: _showAddQuestionDialog,
+              icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+              label: const Text('AÑADIR PREGUNTA', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.green)),
+            ),
           ],
         ),
       );
@@ -356,7 +433,262 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
           const Text('ELECCIÓN FINALIZADA', style: TextStyle(fontWeight: FontWeight.w800, color: Colors.black, fontSize: 16, letterSpacing: 1)),
           const SizedBox(height: 8),
           const Text('Ya no se aceptan más votos para esta elección.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+          const SizedBox(height: 24),
+          OutlinedButton.icon(
+             onPressed: () => _changeStatus(EstadoEleccion.BORRADOR),
+             icon: const Icon(Icons.edit_rounded, size: 16),
+             label: const Text('REVERTIR A BORRADOR'),
+             style: OutlinedButton.styleFrom(
+               foregroundColor: Colors.grey.shade700,
+               side: BorderSide(color: Colors.grey.shade400),
+             ),
+          ),
+          const Text('Úselo para corregir errores. Si ya hubo votación, esto podría causar inconsistencias.', style: TextStyle(fontSize: 10, color: Colors.orange, fontStyle: FontStyle.italic), textAlign: TextAlign.center),
         ],
+      ),
+    );
+  }
+
+  void _showAddQuestionDialog() {
+    final preguntaController = TextEditingController();
+    TipoPregunta selectedTipo = TipoPregunta.OPCION_MULTIPLE;
+    List<String> opciones = [];
+    final opcionesKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Añadir Pregunta'),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                   TextField(
+                     controller: preguntaController,
+                     decoration: const InputDecoration(labelText: 'Texto de la Pregunta'),
+                   ),
+                   const SizedBox(height: 16),
+                   DropdownButtonFormField<TipoPregunta>(
+                     value: selectedTipo,
+                     decoration: const InputDecoration(labelText: 'Tipo de Respuesta'),
+                     items: TipoPregunta.values.map((t) => DropdownMenuItem(
+                       value: t,
+                       child: Text(t.toShortString()),
+                     )).toList(),
+                     onChanged: (val) => setDialogState(() {
+                       selectedTipo = val!;
+                       if (val != TipoPregunta.OPCION_MULTIPLE) opciones.clear();
+                       // Limpiar candidatos si cambia tipo? No necesariamente, pero buena práctica
+                     }),
+                   ),
+                   
+                   // --- LOGICA OPCION MULTIPLE ---
+                   if (selectedTipo == TipoPregunta.OPCION_MULTIPLE) ...[
+                     const SizedBox(height: 16),
+                     const Text('Opciones:', style: TextStyle(fontWeight: FontWeight.bold)),
+                     // ... (mismo código de opciones) ...
+                     ...opciones.asMap().entries.map((e) => ListTile(
+                       dense: true,
+                       title: Text(e.value),
+                       trailing: IconButton(
+                         icon: const Icon(Icons.close, size: 16),
+                         onPressed: () => setDialogState(() => opciones.removeAt(e.key)),
+                       ),
+                     )),
+                     Row(
+                       children: [
+                         Expanded(
+                           child: Form(
+                             key: opcionesKey,
+                             child: TextFormField(
+                               decoration: const InputDecoration(hintText: 'Nueva opción...'),
+                               onFieldSubmitted: (val) {
+                                 if (val.isNotEmpty) {
+                                   setDialogState(() => opciones.add(val));
+                                 }
+                               },
+                             ),
+                           ),
+                         ),
+                         IconButton(onPressed: () {}, icon: const Icon(Icons.add)) 
+                       ],
+                     ),
+                     const Text('Presione Enter para agregar opción', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                   ],
+
+                   // --- LOGICA CANDIDATOS (CSV) ---
+                   if (selectedTipo == TipoPregunta.CANDIDATOS) ...[
+                     const SizedBox(height: 20),
+                     Container(
+                       padding: const EdgeInsets.all(16),
+                       decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.shade100)),
+                       child: Column(
+                         children: [
+                           const Icon(Icons.upload_file, color: Colors.blue, size: 30),
+                           const SizedBox(height: 8),
+                           const Text('Carga Masiva de Candidatos (CSV)', style: TextStyle(fontWeight: FontWeight.bold)),
+                           const SizedBox(height: 8),
+                           Container(
+                             padding: const EdgeInsets.all(8),
+                             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                             child: const Column(
+                               crossAxisAlignment: CrossAxisAlignment.start,
+                               children: [
+                                 Text('Formato requerido:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                 Text('• Debe incluir encabezados en la primera fila.', style: TextStyle(fontSize: 12)),
+                                 Text('• Orden de columnas (BD):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                 Text('1. Nombre Completo', style: TextStyle(fontSize: 12)),
+                                 Text('2. DNI', style: TextStyle(fontSize: 12)),
+                                 Text('3. Sede', style: TextStyle(fontSize: 12)),
+                                 Text('4. Postulacion', style: TextStyle(fontSize: 12)),
+                                 Text('5. Numero Candidatura', style: TextStyle(fontSize: 12)),
+                               ],
+                             ),
+                           ),
+                           const SizedBox(height: 12),
+                           const Text('Por favor respete el orden de columnas de la base de datos.', style: TextStyle(fontSize: 11, color: Colors.grey), textAlign: TextAlign.center),
+                           const SizedBox(height: 12),
+                           ElevatedButton.icon(
+                             onPressed: () async {
+                               try {
+                                 FilePickerResult? result = await FilePicker.platform.pickFiles(
+                                   type: FileType.custom,
+                                   allowedExtensions: ['csv', 'txt'],
+                                   withData: true, // Importante para web/desktop si no hay path directo
+                                 );
+
+                                 if (result != null) {
+                                    final fileBytes = result.files.first.bytes;
+                                    final fileContent = utf8.decode(fileBytes!);
+                                    
+                                    // Detección inteligente de delimitador
+                                    String delimiter = ',';
+                                    if (fileContent.contains(';') && !fileContent.split('\n')[0].contains(',')) {
+                                      delimiter = ';';
+                                    }
+
+                                    final List<List<dynamic>> csvTable = CsvToListConverter(fieldDelimiter: delimiter).convert(fileContent, eol: '\n');
+                                    
+                                    // Procesar (asumiendo cabecera en fila 0)
+                                    // Formato esperado: Nombre, DNI, Sede, Postulacion, Numero
+                                    List<Map<String, dynamic>> parsed = [];
+                                    for (var i = 1; i < csvTable.length; i++) {
+                                      final row = csvTable[i];
+                                      if (row.isEmpty || row[0].toString().isEmpty) continue;
+                                      
+                                      parsed.add({
+                                        'nombre': row[0].toString(),
+                                        'dni': row.length > 1 ? row[1].toString() : '',
+                                        'sede': row.length > 2 ? row[2].toString() : '',
+                                        'postulacion': row.length > 3 ? row[3].toString() : '',
+                                        'numero': row.length > 4 ? row[4].toString() : '0',
+                                      });
+                                    }
+                                    
+                                    // Guardamos temporalmente en 'opciones' para reusar variable o mejor una nueva
+                                    // Hack: Usamos 'opciones' para mostrar "Candidates loaded: X"
+                                    setDialogState(() {
+                                      // Limpiamos opciones textuales y ponemos un indicador
+                                      opciones.clear(); 
+                                      opciones.add('CSV_DATA:${jsonEncode(parsed)}');
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Se cargaron ${parsed.length} candidatos (Delimitador: "$delimiter")')));
+                                 }
+                               } catch (e) {
+                                 debugPrint('Error picking file: $e');
+                                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error leyendo archivo')));
+                               }
+                             },
+                             icon: const Icon(Icons.folder_open),
+                             label: const Text('Seleccionar CSV'),
+                             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                           ),
+                           if (opciones.isNotEmpty && opciones.first.startsWith('CSV_DATA:'))
+                             Padding(
+                               padding: const EdgeInsets.only(top: 8.0),
+                               child: Text(
+                                 '✔ ${jsonDecode(opciones.first.substring(9)).length} candidatos listos para importar',
+                                 style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                               ),
+                             )
+                         ],
+                       ),
+                     )
+                   ]
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                if (preguntaController.text.isEmpty) return;
+                
+                // Validación para opción múltiple
+                if (selectedTipo == TipoPregunta.OPCION_MULTIPLE && opciones.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Añada al menos una opción')));
+                  return;
+                }
+                
+                // Validación para candidatos
+                if (selectedTipo == TipoPregunta.CANDIDATOS && (opciones.isEmpty || !opciones.first.startsWith('CSV_DATA:'))) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debe cargar un archivo de candidatos')));
+                   return;
+                }
+
+                try {
+                  if (selectedTipo == TipoPregunta.CANDIDATOS) {
+                    // Lógica especial para Candidatos
+                    final rawJson = opciones.first.substring(9); // Remover 'CSV_DATA:'
+                    final List<dynamic> rawList = jsonDecode(rawJson);
+                    final List<Map<String, dynamic>> candidatosData = rawList.map((e) => e as Map<String, dynamic>).toList();
+
+                    await _electionService.addQuestionWithCandidates(
+                      eleccionId: widget.eleccion.id,
+                      textoPregunta: preguntaController.text,
+                      orden: 99,
+                      candidatosData: candidatosData,
+                    );
+                  } else {
+                    // Lógica normal
+                    final newPregunta = PreguntaCompleta(
+                      pregunta: Pregunta(
+                        id: '', 
+                        eleccionId: widget.eleccion.id,
+                        textoPregunta: preguntaController.text, 
+                        tipo: selectedTipo,
+                        orden: 99
+                      ),
+                      opciones: opciones.map((t) => Opcion(
+                        id: '', 
+                        preguntaId: '', 
+                        textoOpcion: t
+                      )).toList().cast<Opcion>()
+                    );
+
+                    await _electionService.addQuestionToElection(
+                      eleccionId: widget.eleccion.id,
+                      pc: newPregunta,
+                    );
+                  }
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    setState(() {}); // Refresh list
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pregunta añadida correctamente')));
+                  }
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                }
+              }, 
+              child: const Text('Guardar Pregunta')
+            ),
+          ],
+        ),
       ),
     );
   }

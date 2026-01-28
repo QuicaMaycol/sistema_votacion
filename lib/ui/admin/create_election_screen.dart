@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
+import 'dart:convert';
+import 'dart:io';
 import '../../models/eleccion_pregunta.dart';
 import '../../models/enums.dart';
 import '../../models/opcion_voto.dart';
@@ -236,6 +240,91 @@ class _CreateElectionScreenState extends State<CreateElectionScreen> {
                 onPressed: () => _addOpcion(pIdx),
                 icon: const Icon(Icons.add),
                 label: const Text('Añadir Opción'),
+              )
+            ] else if (pc.pregunta.tipo == TipoPregunta.CANDIDATOS) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                child: Column(
+                  children: [
+                    const Text('Carga Masiva de Candidatos (CSV)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Formato requerido:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                          Text('• Debe incluir encabezados en la primera fila.', style: TextStyle(fontSize: 12)),
+                          Text('• Columnas en orden: Nombre, DNI, Numero, Sede, Postulacion', style: TextStyle(fontSize: 12)),
+                          Text('• Orden de columnas (BD):', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          Text('1. Nombre Completo', style: TextStyle(fontSize: 12)),
+                          Text('2. DNI', style: TextStyle(fontSize: 12)),
+                          Text('3. Sede', style: TextStyle(fontSize: 12)),
+                          Text('4. Postulacion', style: TextStyle(fontSize: 12)),
+                          Text('5. Numero Candidatura', style: TextStyle(fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (pc.candidatesData != null && pc.candidatesData!.isNotEmpty)
+                       Text('✔ ${pc.candidatesData!.length} candidatos cargados', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16))
+                    else
+                       const Text('Ningún archivo cargado', style: TextStyle(color: Colors.grey)),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () async {
+                         try {
+                           FilePickerResult? result = await FilePicker.platform.pickFiles(
+                             type: FileType.custom,
+                             allowedExtensions: ['csv', 'txt'],
+                             withData: true,
+                           );
+
+                           if (result != null) {
+                              final fileBytes = result.files.first.bytes;
+                              final fileContent = utf8.decode(fileBytes!);
+                              
+                              // Detección automática de delimitador
+                              String delimiter = ',';
+                              if (fileContent.contains(';') && !fileContent.split('\n')[0].contains(',')) {
+                                delimiter = ';';
+                              }
+
+                              final List<List<dynamic>> csvTable = CsvToListConverter(fieldDelimiter: delimiter).convert(fileContent, eol: '\n');
+                              
+                              List<Map<String, dynamic>> parsed = [];
+                              for (var i = 1; i < csvTable.length; i++) {
+                                final row = csvTable[i];
+                                if (row.isEmpty || row[0].toString().isEmpty) continue;
+                                
+                                // Orden DB: nombre, dni, sede, postulacion, numero
+                                parsed.add({
+                                  'nombre': row[0].toString(),
+                                  'dni': row.length > 1 ? row[1].toString() : '',
+                                  'sede': row.length > 2 ? row[2].toString() : '',
+                                  'postulacion': row.length > 3 ? row[3].toString() : '',
+                                  'numero': row.length > 4 ? row[4].toString() : '0',
+                                });
+                              }
+                              
+                              setState(() {
+                                pc.candidatesData = parsed;
+                              });
+                              
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Se cargaron ${parsed.length} candidatos (Delimitador: "$delimiter")')));
+                           }
+                         } catch (e) {
+                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al leer CSV')));
+                         }
+                      },
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Subir CSV'),
+                    )
+                  ],
+                ),
               )
             ]
           ],

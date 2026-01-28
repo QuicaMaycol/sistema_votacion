@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../repositories/auth_repository.dart';
 import '../models/perfil_empresa.dart';
 
@@ -11,11 +12,23 @@ class AuthProvider extends ChangeNotifier {
   Perfil? get currentProfile => _currentProfile;
   bool get isLoading => _isLoading;
   String? get lastError => _lastError;
-  bool get isAuthenticated => _authRepo.currentUser != null;
+  
+  // Autenticado si hay usuario de Supabase O si tenemos un perfil válido cargado (Modo DNI)
+  bool get isAuthenticated => _authRepo.currentUser != null || _currentProfile != null;
 
   AuthProvider() {
     _authRepo.authStateChanges.listen((data) {
-      _checkUser();
+      if (data.session != null) {
+        _checkUser();
+      } else {
+        // Si se cierra sesión en Supabase, también limpiamos local
+        // A MENOS que estemos en modo DNI... pero logout debería limpiar todo.
+        // Por seguridad, si auth state cambia a signout, limpiamos.
+        if (data.event == AuthChangeEvent.signedOut) {
+           _currentProfile = null;
+           notifyListeners();
+        }
+      }
     });
     _checkUser();
   }
@@ -44,12 +57,42 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> login(String email, String password) async {
+  Future<void> login(String input, String password) async {
     _isLoading = true;
+    _lastError = null;
     notifyListeners();
+
     try {
-      await _authRepo.signIn(email: email, password: password);
-      await _checkUser();
+      // 1. Intentar Login como Administrador (Email/Pass)
+      // Si tiene @, asumimos que intenta ser admin o usa el formato email.
+      if (input.contains('@')) {
+         await _authRepo.signIn(email: input, password: password);
+         await _checkUser(); // Carga perfil desde Auth
+      } else {
+         // 2. Si no tiene @, asumimos que es DNI.
+         
+         // VALIDACIÓN: Para socios, la contraseña debe ser su DNI.
+         if (input != password) {
+           throw Exception('Usuario o contraseña incorrectos.');
+         }
+
+         // Intentamos primero loguear como socio directo.
+         final socioProfile = await _authRepo.loginWithDni(input);
+         
+         if (socioProfile != null) {
+           _currentProfile = socioProfile;
+           // NOTA: No hay sesión de Supabase Auth real, solo perfil en memoria.
+         } else {
+           throw Exception('DNI no encontrado o no habilitado para votar.');
+         }
+      }
+    } catch (e) {
+      _lastError = e.toString();
+      // Si falló el login admin, y era un DNI, tal vez deberíamos haber probado el otro método?
+      // Pero por ahora la distinción por '@' es robusta para este caso de uso.
+      _currentProfile = null;
+      debugPrint('Login Error: $e');
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();

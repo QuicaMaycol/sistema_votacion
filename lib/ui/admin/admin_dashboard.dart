@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,6 +10,8 @@ import '../../services/auth_service.dart';
 import 'create_election_screen.dart';
 import 'election_control_screen.dart';
 import 'admin_home_tab.dart';
+import 'admin_padron_screen.dart';
+import 'reports_dashboard.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -21,47 +24,66 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final _authService = AuthService();
   final _electionService = ElectionService();
   
-  late RealtimeChannel _presenceChannel;
+  Timer? _presenceTimer;
+
   int _onlineUsers = 0;
+  Set<String> _onlineUserIds = {};
   int _selectedIndex = 0;
+  String? _empresaNombre;
 
   @override
   void initState() {
     super.initState();
-    _initPresence();
-  }
-
-  void _initPresence() {
-    final client = Supabase.instance.client;
-    final profile = context.read<AuthProvider>().currentProfile;
-    if (profile == null) return;
-
-    _presenceChannel = client.channel('quorum:${profile.empresaId}');
-    
-    _presenceChannel.onPresenceSync((payload) {
-      final states = _presenceChannel.presenceState();
-      setState(() {
-        _onlineUsers = states.length;
-      });
-    }).onPresenceJoin((payload) {
-      debugPrint('Usuario se unió: ${payload.newPresences}');
-    }).onPresenceLeave((payload) {
-      debugPrint('Usuario salió: ${payload.leftPresences}');
-    }).subscribe((status, [error]) async {
-      if (status == RealtimeSubscribeStatus.subscribed) {
-        await _presenceChannel.track({
-          'user_id': profile.id,
-          'nombre': profile.nombre,
-          'online_at': DateTime.now().toIso8601String(),
-        });
-      }
-    });
+    _startPresencePolling();
+    _loadEmpresaInfo();
   }
 
   @override
   void dispose() {
-    _presenceChannel.unsubscribe();
+    _presenceTimer?.cancel();
     super.dispose();
+  }
+  
+  void _loadEmpresaInfo() async {
+    final profile = context.read<AuthProvider>().currentProfile;
+    if (profile != null) {
+      final name = await _authService.getEmpresaName(profile.empresaId);
+      if (mounted) setState(() => _empresaNombre = name);
+    }
+  }
+
+  void _startPresencePolling() {
+    _fetchOnlineUsers();
+    _presenceTimer = Timer.periodic(const Duration(seconds: 10), (_) => _fetchOnlineUsers());
+  }
+
+  Future<void> _fetchOnlineUsers() async {
+    final profile = context.read<AuthProvider>().currentProfile;
+    if (profile == null) return;
+
+    try {
+      // Buscamos heartbeats de los últimos 90 segundos (margen amplio)
+      final limitTime = DateTime.now().subtract(const Duration(seconds: 90)).toIso8601String();
+      
+      final data = await Supabase.instance.client
+          .from('presence_heartbeat')
+          .select('user_id')
+          .gt('last_seen', limitTime);
+      
+      final ids = <String>{};
+      for (var row in data) {
+        ids.add(row['user_id'] as String);
+      }
+
+      if (mounted) {
+        setState(() {
+          _onlineUsers = ids.length;
+          _onlineUserIds = ids;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error polling presence: $e');
+    }
   }
 
   @override
@@ -81,6 +103,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _buildRequestsTab(profile.empresaId),
       _buildSociosTab(profile.empresaId),
       _buildTeamTab(profile.empresaId),
+      ReportsDashboard(empresaId: profile.empresaId),
     ];
 
     return Scaffold(
@@ -90,15 +113,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
         backgroundColor: Colors.white.withOpacity(0.8),
         elevation: 0,
         centerTitle: false,
-        leading: !isMobile ? const Padding(
-          padding: EdgeInsets.all(8.0),
-          child: Icon(Icons.apple, color: Colors.black, size: 28),
+        leading: !isMobile ? Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Image.asset('assets/logo_votacion.png', width: 28),
         ) : null,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Apple Votaciones'.toUpperCase(),
+              (_empresaNombre ?? 'SISTEMA DE VOTACIONES').toUpperCase(),
               style: const TextStyle(
                 color: Colors.grey, 
                 fontSize: 10, 
@@ -190,6 +213,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
           _sidebarItem(2, Icons.person_add_rounded, 'Solicitudes'),
           _sidebarItem(3, Icons.people_alt_rounded, 'Socios Activos'),
           _sidebarItem(4, Icons.badge_rounded, 'Equipo de Gestión'),
+          const Divider(),
+          _sidebarItem(5, Icons.bar_chart_rounded, 'Reportes'),
           const Spacer(),
           Container(
             padding: const EdgeInsets.all(16),
@@ -383,46 +408,130 @@ class _AdminDashboardState extends State<AdminDashboard> {
         if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
         
         final socios = snapshot.data ?? [];
-        if (socios.isEmpty) return _buildEmptyStateInTab('No hay socios registrados.');
+        if (socios.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _buildEmptyStateInTab('No hay socios registrados.'),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (_) => AdminPadronScreen(empresaId: empresaId))
+                  ).then((_) => setState((){})),
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Cargar Padrón Masivo'),
+                )
+              ],
+            )
+          );
+        }
 
-        return Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: ListView.builder(
-              padding: const EdgeInsets.all(24),
-              itemCount: socios.length,
-              itemBuilder: (context, index) {
-                final s = socios[index];
-                final bool isActive = s['estado_acceso'] == 'ACTIVO';
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.shade100),
+        return Column(
+          children: [
+             Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Padrón de Socios', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                      ElevatedButton.icon(
+                        onPressed: () => Navigator.push(
+                          context, 
+                          MaterialPageRoute(builder: (_) => AdminPadronScreen(empresaId: empresaId))
+                        ).then((_) => setState((){})),
+                        icon: const Icon(Icons.upload_file, size: 18),
+                        label: const Text('Cargar / Actualizar Masivo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    leading: CircleAvatar(
-                      backgroundColor: isActive ? Colors.green.shade50 : Colors.red.shade50,
-                      child: Text(s['nombre'][0].toUpperCase(), style: TextStyle(color: isActive ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-                    ),
-                    title: Text(s['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (isActive)
-                          _actionIconButton(Icons.block_rounded, Colors.red, () => _handleApproval(s['id'], EstadoUsuario.BLOQUEADO))
-                        else
-                          _actionIconButton(Icons.check_circle_outline_rounded, Colors.green, () => _handleApproval(s['id'], EstadoUsuario.ACTIVO)),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                ),
+              ),
             ),
-          ),
+            Expanded(
+              child: Center(
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 900),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    itemCount: socios.length,
+                    itemBuilder: (context, index) {
+                      final s = socios[index];
+                      final bool isActive = s['estado_acceso'] == 'ACTIVO';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.grey.shade100),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                          leading: Stack(
+                            children: [
+                              CircleAvatar(
+                                backgroundColor: isActive ? Colors.green.shade50 : Colors.red.shade50,
+                                child: Text(s['nombre'][0].toUpperCase(), style: TextStyle(color: isActive ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                              ),
+                              if (_onlineUserIds.contains(s['id']))
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: Colors.greenAccent.shade700,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          title: Text(s['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Row(
+                            children: [
+                              Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                              if (_onlineUserIds.contains(s['id']))
+                                Container(
+                                  margin: const EdgeInsets.only(left: 8),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green.shade100,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('EN LÍNEA', style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isActive)
+                                _actionIconButton(Icons.block_rounded, Colors.red, () => _handleApproval(s['id'], EstadoUsuario.BLOQUEADO))
+                              else
+                                _actionIconButton(Icons.check_circle_outline_rounded, Colors.green, () => _handleApproval(s['id'], EstadoUsuario.ACTIVO)),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );

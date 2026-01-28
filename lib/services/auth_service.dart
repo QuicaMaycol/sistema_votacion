@@ -29,6 +29,18 @@ class AuthService {
     return data;
   }
 
+  /// Obtiene nombre de empresa por ID
+  Future<String?> getEmpresaName(String empresaId) async {
+     final data = await _client
+        .schema('votaciones')
+        .from('empresas')
+        .select('nombre')
+        .eq('id', empresaId)
+        .maybeSingle();
+      if (data != null) return data['nombre'] as String;
+      return null;
+  }
+
   /// REGISTRO DE SOCIO (Afiliación a empresa existente)
   Future<String> registerSocio({
     required String email,
