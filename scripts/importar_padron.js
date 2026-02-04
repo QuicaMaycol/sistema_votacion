@@ -29,16 +29,17 @@ async function importarPadron() {
     console.log(`Iniciando importación de ${padron.length} socios...`);
 
     for (const socio of padron) {
-        const emailFicticio = `${socio.dni}@padron.votacion`;
-        const passwordInicial = socio.dni; // La contraseña es el mismo DNI
+        // Usar email real si existe, de lo contrario el ficticio
+        const emailFinal = socio.email || `${socio.dni}@padron.votacion`;
+        const passwordInicial = socio.dni;
 
-        console.log(`Procesando: ${socio.dni} - ${socio.nombre}`);
+        console.log(`Procesando: ${socio.dni} - ${socio.nombre} (${emailFinal})`);
 
-        // 1. Crear Usuario en AUTH (Authentication)
+        // 1. Crear Usuario en AUTH
         const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-            email: emailFicticio,
+            email: emailFinal,
             password: passwordInicial,
-            email_confirm: true, // Importante: Confirmamos el email automáticamente
+            email_confirm: true,
             user_metadata: {
                 nombre_completo: socio.nombre,
                 dni: socio.dni
@@ -65,9 +66,10 @@ async function importarPadron() {
             .upsert({
                 id: userId,
                 nombre: socio.nombre,
-                // dni: socio.dni, // Descomenta si tienes columna dni en la tabla
+                email: emailFinal,
+                dni: socio.dni,
                 rol: 'SOCIO',
-                estado_acceso: 'ACTIVO' // O PENDIENTE, según tu lógica
+                estado_acceso: 'ACTIVO'
             });
 
         if (dbError) {

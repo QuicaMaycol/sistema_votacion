@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/eleccion_pregunta.dart';
 import '../../models/opcion_voto.dart';
+import '../../services/n8n_service.dart';
 
 class VotingCard extends StatefulWidget {
   final Map<String, dynamic> preguntaData;
@@ -123,6 +124,7 @@ class _VotingCardState extends State<VotingCard> {
       // Ya que el login por DNI no crea sesión de Supabase Auth, el currentUser es null.
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final userId = authProvider.currentProfile?.id;
+      final empresaId = authProvider.currentProfile?.empresaId;
 
       if (userId == null) {
         throw 'No se pudo identificar al usuario votante. Intente recargar.';
@@ -131,9 +133,32 @@ class _VotingCardState extends State<VotingCard> {
       await _electionService.votar(
         usuarioId: userId,
         preguntaId: widget.preguntaData['id'],
+        empresaId: empresaId,
         opcionId: (opcionId?.startsWith('AUTO_') ?? false) ? null : opcionId,
         valorNumerico: (opcionId == 'AUTO_SI') ? 1.0 : (opcionId == 'AUTO_NO' ? 0.0 : valor),
       );
+
+      // --- ENVÍO DE CONFIRMACIÓN A N8N ---
+      if (authProvider.currentProfile != null) {
+        final profile = authProvider.currentProfile!;
+        String? textoOpcion;
+        if (opcionId != null) {
+          final op = _opciones.where((o) => o.id == opcionId).firstOrNull ?? 
+                     _filteredOciones.where((o) => o.id == opcionId).firstOrNull;
+          textoOpcion = op?.textoOpcion ?? (opcionId == 'AUTO_SI' ? 'Sí' : (opcionId == 'AUTO_NO' ? 'No' : 'Opción Desconocida'));
+        }
+
+        N8nService().enviarConfirmacionVoto(
+          socioNombre: profile.nombre,
+          socioEmail: profile.email ?? '',
+          eleccionTitulo: widget.preguntaData['titulo_eleccion']?.toString() ?? 'Elección',
+          preguntaTexto: widget.preguntaData['texto_pregunta'] ?? '',
+          opcionElegida: textoOpcion ?? 'Valor numérico',
+          valorNumerico: valor?.toString(),
+        );
+      }
+      // ------------------------------------
+
       widget.onVoted(); 
     } catch (e) {
       debugPrint('Error al votar: $e');

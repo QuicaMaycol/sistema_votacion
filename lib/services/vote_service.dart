@@ -45,4 +45,16 @@ class VoteService {
     
     return data != null;
   }
+
+  /// Verifica si el usuario ha emitido algún voto en el sistema
+  Future<bool> userHasVoted(String usuarioId) async {
+    final data = await _client
+        .schema('votaciones')
+        .from('votos')
+        .select('id')
+        .eq('usuario_id', usuarioId)
+        .limit(1)
+        .maybeSingle();
+    return data != null;
+  }
 }

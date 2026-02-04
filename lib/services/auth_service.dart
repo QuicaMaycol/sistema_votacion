@@ -244,4 +244,24 @@ class AuthService {
       debugPrint('Error eliminando heartbeat: $e');
     }
   }
+
+  // --- RECUPERACIÓN DE CONTRASEÑA ---
+
+  Future<void> recoverPassword(String email) async {
+    await _authRepo.recoverPassword(email);
+  }
+
+  Future<void> updatePassword(String newPassword) async {
+    await _authRepo.updatePassword(newPassword);
+  }
+
+  // --- GESTIÓN DE SOCIOS ---
+
+  Future<void> deleteUser(String userId) async {
+    await _client
+        .schema('votaciones')
+        .from('perfiles')
+        .delete()
+        .eq('id', userId);
+  }
 }

@@ -4,9 +4,12 @@ import 'core/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'models/enums.dart';
 import 'ui/auth/login_screen.dart';
+import 'ui/auth/reset_password_screen.dart';
 import 'ui/admin/admin_dashboard.dart';
 import 'ui/socio/socio_dashboard.dart';
 import 'ui/views/pending_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'core/supabase_config.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,14 +25,37 @@ void main() async {
   );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Escuchar cambios de autenticación para Deep Links (Recuperación de contraseña)
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final event = data.event;
+      debugPrint('DEBUG AuthEvent: $event');
+      if (event == AuthChangeEvent.passwordRecovery) {
+        MyApp.navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Sistema de Votaciones',
       debugShowCheckedModeBanner: false,
+      navigatorKey: MyApp.navigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,

@@ -43,6 +43,26 @@ class AuthRepository {
     await _client.auth.signOut();
   }
 
+  /// Inicia el flujo de recuperación de contraseña
+  Future<void> recoverPassword(String email) async {
+    // Si es Web, redirigimos a la URL actual. Si es Mobile, al esquema deep link.
+    final String redirectTo = kIsWeb 
+      ? Uri.base.origin 
+      : 'io.supabase.votaciones://reset-password';
+
+    await _client.auth.resetPasswordForEmail(
+      email,
+      redirectTo: redirectTo,
+    );
+  }
+
+  /// Actualiza la contraseña del usuario actual
+  Future<void> updatePassword(String newPassword) async {
+    await _client.auth.updateUser(
+      UserAttributes(password: newPassword),
+    );
+  }
+
   Future<Perfil?> getMyProfile() async {
     final user = currentUser;
     if (user == null) {

@@ -105,26 +105,17 @@ class _AdminPadronScreenState extends State<AdminPadronScreen> {
         if (rawDni.toLowerCase() == 'dni' || rawDni.isEmpty) continue; // Skip header
 
         String nombre = (row.length > 1) ? row[1].toString().trim() : 'Socio $rawDni';
+        String? email = (row.length > 2) ? row[2].toString().trim() : null;
         
         // Determinar ID: idealmente determinístico o nuevo
-        // Si usamos DNI como semilla o simplemente generamos uno nuevo.
-        // PERO: Si el usuario ya existe, queremos actualizarlo, no duplicarlo.
-        // Si la PK es UUID, necesitamos saber su UUID para actualizarlo.
-        // ESTRATEGIA: Buscar por DNI primero es lento uno por uno.
-        // ESTRATEGIA MEJOR: Hacer upsert usando DNI como clave? No, DNI no es PK.
-        // ESTRATEGIA ACTUAL: Consultar si existe DNI.
-        // Para simplificar: Generamos un UUID nuevo para todos. SI existe DNI se duplicará?
-        // Deberías tener una constraint UNIQUE(dni, empresa_id) en la BD.
-        
         final newId = uuid.v4();
         
         upsertList.add({
-          'id': newId, // Esto podría fallar si el DNI ya existe y tiene constraint unique. 
-                       // Supabase upsert por default usa PK.
-                       // Si queremos upsert por DNI, necesitamos saber el ID existente.
+          'id': newId, 
           'empresa_id': widget.empresaId,
           'dni': rawDni,
           'nombre': nombre,
+          'email': email,
           'rol': 'SOCIO',
           'estado_acceso': 'ACTIVO',
           'created_at': DateTime.now().toIso8601String(),
@@ -178,7 +169,7 @@ class _AdminPadronScreenState extends State<AdminPadronScreen> {
               'Instrucciones:',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-            const Text('1. Prepara un archivo CSV con columnas: DNI, NOMBRE'),
+            const Text('1. Prepara un archivo CSV con columnas: DNI, NOMBRE, CORREO'),
             const Text('2. No incluyas cabeceras (o serán ignoradas si dicen "DNI")'),
             const SizedBox(height: 24),
             Row(
@@ -224,7 +215,9 @@ class _AdminPadronScreenState extends State<AdminPadronScreen> {
                       dense: true,
                       leading: Text('${index + 1}'),
                       title: Text(row.length > 1 ? row[1].toString() : 'Sin Nombre'),
-                      subtitle: Text(row.isNotEmpty ? row[0].toString() : 'Sin DNI'),
+                      subtitle: Text(
+                        '${row.isNotEmpty ? row[0].toString() : 'Sin DNI'} • ${row.length > 2 ? row[2].toString() : 'Sin correo'}'
+                      ),
                     );
                   },
                 ),

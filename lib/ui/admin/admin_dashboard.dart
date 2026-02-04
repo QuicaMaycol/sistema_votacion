@@ -12,6 +12,7 @@ import 'election_control_screen.dart';
 import 'admin_home_tab.dart';
 import 'admin_padron_screen.dart';
 import 'reports_dashboard.dart';
+import '../../services/vote_service.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -23,6 +24,7 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   final _authService = AuthService();
   final _electionService = ElectionService();
+  final _voteService = VoteService();
   
   Timer? _presenceTimer;
 
@@ -551,19 +553,26 @@ class _AdminDashboardState extends State<AdminDashboard> {
                             ],
                           ),
                           title: Text(s['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Row(
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
-                              if (_onlineUserIds.contains(s['id']))
-                                Container(
-                                  margin: const EdgeInsets.only(left: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.green.shade100,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text('EN LÍNEA', style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
-                                ),
+                              Row(
+                                children: [
+                                  Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                                  if (_onlineUserIds.contains(s['id']))
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.green.shade100,
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text('EN LÍNEA', style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                ],
+                              ),
+                              if (s['email'] != null && s['email'].toString().isNotEmpty)
+                                Text(s['email'], style: TextStyle(color: Colors.blue.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
                             ],
                           ),
                           trailing: Row(
@@ -573,6 +582,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
                                 _actionIconButton(Icons.block_rounded, Colors.red, () => _handleApproval(s['id'], EstadoUsuario.BLOQUEADO))
                               else
                                 _actionIconButton(Icons.check_circle_outline_rounded, Colors.green, () => _handleApproval(s['id'], EstadoUsuario.ACTIVO)),
+                              const SizedBox(width: 8),
+                              _actionIconButton(
+                                Icons.delete_outline_rounded, 
+                                Colors.redAccent, 
+                                () => _confirmDeleteSocio(s)
+                              ),
                             ],
                           ),
                         ),
@@ -737,6 +752,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
+  }
+
+  void _confirmDeleteSocio(Map<String, dynamic> socio) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar Socio'),
+        content: Text('¿Estás seguro de que deseas eliminar a "${socio['nombre']}"? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                // 1. Verificar si ya votó
+                final hasVoted = await _voteService.userHasVoted(socio['id']);
+                if (hasVoted) {
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No se puede eliminar a un socio que ya ha emitido votos.'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  }
+                  return;
+                }
+
+                // 2. Eliminar
+                await _authService.deleteUser(socio['id']);
+                if (mounted) {
+                  Navigator.pop(context);
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Socio eliminado exitosamente')),
+                  );
+                }
+              } catch (err) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error al eliminar: $err')),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

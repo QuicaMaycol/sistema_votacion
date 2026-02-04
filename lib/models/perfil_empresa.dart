@@ -37,6 +37,7 @@ class Perfil {
   final String id;
   final String empresaId;
   final String nombre;
+  final String? email; // NUEVO
   final String? dni;
   final String? celular;
   final RolUsuario rol;
@@ -47,6 +48,7 @@ class Perfil {
     required this.id,
     required this.empresaId,
     required this.nombre,
+    this.email,
     this.dni,
     this.celular,
     required this.rol,
@@ -60,6 +62,7 @@ class Perfil {
         id: json['id'],
         empresaId: json['empresa_id'],
         nombre: json['nombre'],
+        email: json['email'],
         dni: json['dni'],
         celular: json['celular'],
         rol: RolUsuario.values.firstWhere(
@@ -84,6 +87,7 @@ class Perfil {
         'id': id,
         'empresa_id': empresaId,
         'nombre': nombre,
+        'email': email,
         'dni': dni,
         'celular': celular,
         'rol': rol.toShortString(),

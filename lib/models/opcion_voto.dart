@@ -31,6 +31,7 @@ class Voto {
   final String? id;
   final String preguntaId;
   final String usuarioId;
+  final String? empresaId; // NUEVO
   final String? opcionElegidaId;
   final double? valorNumerico;
   final DateTime? timestamp;
@@ -39,6 +40,7 @@ class Voto {
     this.id,
     required this.preguntaId,
     required this.usuarioId,
+    this.empresaId,
     this.opcionElegidaId,
     this.valorNumerico,
     this.timestamp,
@@ -49,6 +51,7 @@ class Voto {
       id: json['id'],
       preguntaId: json['pregunta_id'],
       usuarioId: json['usuario_id'],
+      empresaId: json['empresa_id'],
       opcionElegidaId: json['opcion_elegida_id'],
       valorNumerico: json['valor_numerico']?.toDouble(),
       timestamp: json['timestamp'] != null ? DateTime.parse(json['timestamp']) : null,
@@ -58,6 +61,7 @@ class Voto {
   Map<String, dynamic> toJson() => {
         'pregunta_id': preguntaId,
         'usuario_id': usuarioId,
+        'empresa_id': empresaId,
         'opcion_elegida_id': opcionElegidaId,
         'valor_numerico': valorNumerico,
       };

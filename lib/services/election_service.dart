@@ -145,6 +145,7 @@ class ElectionService {
   Future<void> votar({
     required String usuarioId,
     required String preguntaId,
+    String? empresaId,
     String? opcionId,
     double? valorNumerico,
   }) async {
@@ -152,6 +153,7 @@ class ElectionService {
     await _client.rpc('emitir_voto', params: {
       'p_usuario_id': usuarioId, 
       'p_pregunta_id': preguntaId,
+      'p_empresa_id': empresaId,
       'p_opcion_id': opcionId,
       'p_valor_numerico': valorNumerico,
     });

@@ -111,4 +111,22 @@ class AuthProvider extends ChangeNotifier {
     _currentProfile = null;
     notifyListeners();
   }
+
+  Future<void> recoverPassword(String email) async {
+    try {
+      await _authRepo.recoverPassword(email);
+    } catch (e) {
+      _lastError = e.toString();
+      rethrow;
+    }
+  }
+
+  Future<void> updatePassword(String newPassword) async {
+    try {
+      await _authRepo.updatePassword(newPassword);
+    } catch (e) {
+      _lastError = e.toString();
+      rethrow;
+    }
+  }
 }
