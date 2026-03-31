@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../models/eleccion_pregunta.dart';
+import '../../models/enums.dart';
 
 class ResultChart extends StatelessWidget {
   final Pregunta pregunta;
@@ -76,7 +77,7 @@ class ResultChart extends StatelessWidget {
   }
 
   List<String> _getLabels() {
-    if (pregunta.tipo.name == 'OPCION_MULTIPLE') {
+    if (pregunta.tipo == TipoPregunta.OPCION_MULTIPLE || pregunta.tipo == TipoPregunta.CANDIDATOS) {
       return opciones.map((o) => o['texto_opcion'].toString()).toList();
     } else {
       // Para numéricos, mostramos los valores únicos votados
@@ -95,14 +96,16 @@ class ResultChart extends StatelessWidget {
       final label = labels[i];
       double count = 0;
 
-      if (pregunta.tipo.name == 'OPCION_MULTIPLE') {
+      if (pregunta.tipo == TipoPregunta.OPCION_MULTIPLE || pregunta.tipo == TipoPregunta.CANDIDATOS) {
          // Buscar por ID de opción correspondiente al label
          final matches = opciones.where((o) => o['texto_opcion'] == label);
          final opcionObj = matches.isEmpty ? null : matches.first;
 
          if (opcionObj != null) {
            final r = resultados.firstWhere(
-             (res) => res['opcion_elegida_id'] == opcionObj['id'], 
+             (res) => res['opcion_elegida_id'] == opcionObj['id'] || 
+                      res['candidato_id'] == opcionObj['id'] ||
+                      res['opcion_id'] == opcionObj['id'], 
              orElse: () => {'total_votos': 0}
            );
            count = r['total_votos'].toDouble();

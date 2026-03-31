@@ -76,15 +76,23 @@ class _SocioDashboardState extends State<SocioDashboard> {
     setState(() => _isLoading = true);
     try {
       final profile = context.read<AuthProvider>().currentProfile;
+      print('DEBUG SOCIO: id=${profile?.id}, empresaId=${profile?.empresaId}, nombre=${profile?.nombre}');
       if (profile == null) {
         // Si por alguna razón no hay perfil, no podemos cargar datos
+        print('DEBUG SOCIO: Perfil es nulo');
         setState(() => _preguntas = []);
         return;
       }
       final data = await _electionService.getPendingQuestionsForSocio(profile.id);
+      print('DEBUG SOCIO: Preguntas recibidas: ${data.length}');
       setState(() => _preguntas = data);
     } catch (e) {
-      debugPrint('Error: $e');
+      debugPrint('Error cargando preguntas: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cargar preguntas: $e'), backgroundColor: Colors.red),
+        );
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -116,6 +124,7 @@ class _SocioDashboardState extends State<SocioDashboard> {
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<AuthProvider>().currentProfile;
+    print('DEBUG SOCIO BUILD: Cargando=${_isLoading}, Preguntas=${_preguntas.length}');
 
     return DefaultTabController(
       length: 2,
@@ -187,18 +196,14 @@ class _SocioDashboardState extends State<SocioDashboard> {
       );
     }
 
-    return AnimatedList(
-      key: _listKey,
+    return ListView.builder(
       padding: const EdgeInsets.all(16),
-      initialItemCount: _preguntas.length,
-      itemBuilder: (context, index, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: VotingCard(
-            key: ValueKey(_preguntas[index]['id']),
-            preguntaData: _preguntas[index],
-            onVoted: () => _onVoted(index),
-          ),
+      itemCount: _preguntas.length,
+      itemBuilder: (context, index) {
+        return VotingCard(
+          key: ValueKey(_preguntas[index]['id']),
+          preguntaData: _preguntas[index],
+          onVoted: () => _onVoted(index),
         );
       },
     );

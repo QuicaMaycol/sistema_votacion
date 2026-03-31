@@ -21,12 +21,16 @@ class ElectionControlScreen extends StatefulWidget {
 class _ElectionControlScreenState extends State<ElectionControlScreen> {
   final _electionService = ElectionService();
   late EstadoEleccion _estadoActual;
+  late DateTime _fechaInicio;
+  late DateTime _fechaFin;
   bool _isUpdating = false;
 
   @override
   void initState() {
     super.initState();
     _estadoActual = widget.eleccion.estado;
+    _fechaInicio = widget.eleccion.fechaInicio;
+    _fechaFin = widget.eleccion.fechaFin;
   }
 
   Future<void> _changeStatus(EstadoEleccion nuevoEstado) async {
@@ -305,8 +309,17 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
             const Divider(height: 48, color: Color(0xFFF5F5F7)),
             Row(
               children: [
-                Expanded(child: _infoItem(Icons.calendar_today_rounded, 'Inicio', widget.eleccion.fechaInicio.toString().split('.')[0])),
-                Expanded(child: _infoItem(Icons.calendar_today_outlined, 'Fin', widget.eleccion.fechaFin.toString().split('.')[0])),
+                Expanded(child: _infoItem(Icons.calendar_today_rounded, 'Inicio', _fechaInicio.toString().split('.')[0])),
+                Expanded(child: _infoItem(Icons.calendar_today_outlined, 'Fin', _fechaFin.toString().split('.')[0])),
+                TextButton.icon(
+                  onPressed: _showEditDatesDialog,
+                  icon: const Icon(Icons.edit_calendar_rounded, size: 18),
+                  label: const Text('EDITAR FECHA DE INICIO Y FIN', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    foregroundColor: Colors.blueAccent,
+                  ),
+                ),
               ],
             ),
           ],
@@ -449,8 +462,107 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
     );
   }
 
+  void _showEditDatesDialog() {
+    DateTime tempInicio = _fechaInicio;
+    DateTime tempFin = _fechaFin;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Editar Fecha de Inicio y Fin'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Fecha Inicio'),
+                subtitle: Text(tempInicio.toString().split('.')[0]),
+                trailing: const Icon(Icons.edit_calendar),
+                onTap: () async {
+                  final picked = await _pickSpecificDateTime(tempInicio);
+                  if (picked != null) {
+                    setDialogState(() {
+                      tempInicio = picked;
+                      if (tempFin.isBefore(tempInicio)) {
+                        tempFin = tempInicio.add(const Duration(hours: 1));
+                      }
+                    });
+                  }
+                },
+              ),
+              ListTile(
+                title: const Text('Fecha Fin'),
+                subtitle: Text(tempFin.toString().split('.')[0]),
+                trailing: const Icon(Icons.edit_calendar),
+                onTap: () async {
+                  final picked = await _pickSpecificDateTime(tempFin);
+                  if (picked != null) {
+                    setDialogState(() => tempFin = picked);
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () async {
+                setState(() => _isUpdating = true);
+                Navigator.pop(context);
+                try {
+                  await _electionService.updateElectionDates(widget.eleccion.id, tempInicio, tempFin);
+                  setState(() {
+                    _fechaInicio = tempInicio;
+                    _fechaFin = tempFin;
+                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Cronograma actualizado exitosamente')));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  }
+                } finally {
+                  setState(() => _isUpdating = false);
+                }
+              },
+              child: const Text('Guardar Cambios'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<DateTime?> _pickSpecificDateTime(DateTime initial) async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+
+    if (pickedDate == null) return null;
+
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+
+    if (pickedTime == null) return null;
+
+    return DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
+  }
+
   void _showAddQuestionDialog() {
     final preguntaController = TextEditingController();
+    final nuevaOpcionController = TextEditingController();
     TipoPregunta selectedTipo = TipoPregunta.OPCION_MULTIPLE;
     List<String> opciones = [];
     final opcionesKey = GlobalKey<FormState>();
@@ -504,16 +616,31 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
                            child: Form(
                              key: opcionesKey,
                              child: TextFormField(
+                               controller: nuevaOpcionController,
                                decoration: const InputDecoration(hintText: 'Nueva opción...'),
                                onFieldSubmitted: (val) {
                                  if (val.isNotEmpty) {
-                                   setDialogState(() => opciones.add(val));
+                                   setDialogState(() {
+                                     opciones.add(val);
+                                     nuevaOpcionController.clear();
+                                   });
                                  }
                                },
                              ),
                            ),
                          ),
-                         IconButton(onPressed: () {}, icon: const Icon(Icons.add)) 
+                         IconButton(
+                           onPressed: () {
+                             final val = nuevaOpcionController.text;
+                             if (val.isNotEmpty) {
+                               setDialogState(() {
+                                 opciones.add(val);
+                                 nuevaOpcionController.clear();
+                               });
+                             }
+                           }, 
+                           icon: const Icon(Icons.add)
+                         ) 
                        ],
                      ),
                      const Text('Presione Enter para agregar opción', style: TextStyle(fontSize: 10, color: Colors.grey)),
@@ -792,9 +919,9 @@ class _ElectionControlScreenState extends State<ElectionControlScreen> {
                         color: u['ha_votado'] ? Colors.green : Colors.grey,
                       ),
                     ),
-                    title: Text(u['nombre_usuario']),
-                    subtitle: Text(u['ha_votado'] 
-                      ? 'Participó el ${u['fecha_voto'].toString().split('T')[0]}' 
+                    title: Text(u['nombre_usuario'] ?? 'Socio desconocido'),
+                    subtitle: Text(u['ha_votado'] == true 
+                      ? 'Participó el ${u['fecha_voto']?.toString().split('T')[0] ?? 'Fecha no disponible'}' 
                       : 'Aún no ha participado'),
                   );
                 },

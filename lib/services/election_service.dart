@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/eleccion_pregunta.dart';
 import '../models/enums.dart';
@@ -69,6 +70,17 @@ class ElectionService {
         .eq('id', electionId);
   }
 
+  Future<void> updateElectionDates(String electionId, DateTime inicio, DateTime fin) async {
+    await _client
+        .schema('votaciones')
+        .from('elecciones')
+        .update({
+          'fecha_inicio': inicio.toIso8601String(),
+          'fecha_fin': fin.toIso8601String(),
+        })
+        .eq('id', electionId);
+  }
+
   Future<List<Eleccion>> getElections(String empresaId) async {
     final data = await _client
         .schema('votaciones')
@@ -100,7 +112,10 @@ class ElectionService {
         .schema('votaciones')
         .from('opciones')
         .select()
-        .inFilter('pregunta_id', idsPreguntas);
+        .filter('pregunta_id', 'in', idsPreguntas);
+    
+    print('DEBUG ELECTION: ID=${eleccionId}');
+    print('DEBUG ELECTION: Opciones encontradas: ${dataOpciones.length} para preguntas: $idsPreguntas');
     
     final listaOpciones = List<Opcion>.from(dataOpciones.map((x) => Opcion.fromJson(x)));
 
@@ -110,7 +125,9 @@ class ElectionService {
         .schema('votaciones')
         .from('candidatos')
         .select()
-        .inFilter('pregunta_id', idsPreguntas);
+        .filter('pregunta_id', 'in', idsPreguntas);
+    
+    print('DEBUG ELECTION: Candidatos encontrados: ${dataCandidatos.length} para preguntas: $idsPreguntas');
     
     // print('DEBUG CANDIDATOS: ${dataCandidatos.length} encontrados para preguntas: $idsPreguntas');
     
@@ -138,7 +155,39 @@ class ElectionService {
     final response = await _client.rpc('get_preguntas_pendientes', params: {
       'p_usuario_id': usuarioId,
     });
-    return List<Map<String, dynamic>>.from(response);
+    
+    final List<Map<String, dynamic>> questions = List<Map<String, dynamic>>.from(response);
+    
+    // Fallback: Si el RPC no devuelve fechas (porque no se ha actualizado en BD), 
+    // las buscamos manualmente para no bloquear la visualización al socio.
+    if (questions.isNotEmpty && (questions.first['fecha_inicio'] == null || questions.first['titulo_eleccion'] == null)) {
+      try {
+        final electionIds = questions.map((q) => q['eleccion_id']).toSet().toList();
+        final electionsData = await _client
+            .schema('votaciones')
+            .from('elecciones')
+            .select('id, titulo, fecha_inicio, fecha_fin')
+            .filter('id', 'in', electionIds);
+        
+        final Map<String, dynamic> electionMap = {
+          for (var e in electionsData) e['id']: e
+        };
+
+        return questions.map((q) {
+          final election = electionMap[q['eleccion_id']];
+          return {
+            ...q,
+            'titulo_eleccion': election?['titulo'] ?? 'Elección',
+            'fecha_inicio': election?['fecha_inicio'],
+            'fecha_fin': election?['fecha_fin'],
+          };
+        }).toList();
+      } catch (e) {
+        debugPrint('Error en fallback de fechas: $e');
+      }
+    }
+    
+    return questions;
   }
 
   /// Fase 4: Emitir un voto atómico usando RPC
@@ -188,33 +237,44 @@ class ElectionService {
 
   /// Fase 5: Obtener resultados agrupados (Anónimos)
   Future<List<Map<String, dynamic>>> getResultsByElection(String eleccionId) async {
-    // 1. Obtener IDs de preguntas
-    final preguntas = await _client
-        .schema('votaciones')
-        .from('preguntas')
-        .select('id')
-        .eq('eleccion_id', eleccionId);
-    
-    if (preguntas.isEmpty) return [];
-
-    final idsPreguntas = preguntas.map((p) => p['id']).toList();
-    
-    // 2. Obtener resultados solo si hay preguntas
-    final results = await _client
-        .schema('votaciones')
-        .from('view_resultados_conteo')
-        .select()
-        .inFilter('pregunta_id', idsPreguntas);
-
-    return List<Map<String, dynamic>>.from(results);
+    try {
+      final response = await _client.rpc('get_resultados_conteo', params: {
+        'p_eleccion_id': eleccionId,
+      });
+      
+      // Mapear los campos del RPC para que coincidan con lo que espera el frontend
+      // 'conteo' -> 'total_votos'
+      // 'opcion_id' -> 'opcion_id' (sirve tanto para opciones como candidatos)
+      return List<Map<String, dynamic>>.from(response).map((r) => {
+        ...r,
+        'total_votos': r['conteo'] ?? 0,
+        'opcion_elegida_id': r['opcion_id'],
+        'candidato_id': r['opcion_id'],
+      }).toList();
+    } catch (e) {
+      print('DEBUG: Error en getResultsByElection: $e');
+      return [];
+    }
   }
 
   /// Fase 5: Reporte de Participación (Avance)
   Future<List<Map<String, dynamic>>> getParticipationReport(String eleccionId) async {
-    final response = await _client.rpc('get_reporte_avance', params: {
-      'p_eleccion_id': eleccionId,
-    });
-    return List<Map<String, dynamic>>.from(response);
+    try {
+      final response = await _client.rpc('get_reporte_avance', params: {
+        'p_eleccion_id': eleccionId,
+      });
+      
+      return List<Map<String, dynamic>>.from(response).map((r) => {
+        ...r,
+        'usuario_id': r['user_id'],
+        'nombre_usuario': r['nombre'] ?? 'Sin nombre',
+        'ha_votado': r['estado'] != 'PENDIENTE',
+        'fecha_voto': null, // El backend actual no devuelve fecha individual por ahora
+      }).toList();
+    } catch (e) {
+      print('Error en getParticipationReport: $e');
+      return [];
+    }
   }
 
   /// Fase 5: Reporte de Resultados (Conteo)

@@ -48,13 +48,20 @@ RETURNS SETOF votaciones.preguntas
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    v_empresa_id UUID;
 BEGIN
-    -- Retorna preguntas de elecciones activas que el usuario NO ha votado
+    -- Obtener la empresa del usuario para aislamiento
+    SELECT empresa_id INTO v_empresa_id FROM votaciones.perfiles WHERE id = p_usuario_id;
+
+    -- Retorna preguntas de elecciones activas que pertenecen a LA MISMA EMPRESA
+    -- y que el usuario NO ha votado
     RETURN QUERY
     SELECT p.*
     FROM votaciones.preguntas p
     JOIN votaciones.elecciones e ON p.eleccion_id = e.id
     WHERE e.estado = 'ACTIVA'
+    AND e.empresa_id = v_empresa_id -- FILTRO CRÍTICO DE AISLAMIENTO
     AND NOT EXISTS (
         SELECT 1 
         FROM votaciones.votos v 

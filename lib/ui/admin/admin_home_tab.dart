@@ -368,10 +368,10 @@ class _AdminHomeTabState extends State<AdminHomeTab> {
     String textoGanador = "Sin datos";
     if (ganador != null) {
       if (pc.pregunta.tipo == TipoPregunta.OPCION_MULTIPLE || pc.pregunta.tipo == TipoPregunta.CANDIDATOS) {
-        final optId = ganador!['opcion_elegida_id'];
+        final optId = ganador!['opcion_elegida_id'] ?? ganador!['candidato_id'] ?? ganador!['opcion_id'];
         final opcionesCoincidentes = pc.opciones.where((o) => o.id == optId).toList();
         final Opcion? opt = opcionesCoincidentes.isNotEmpty ? opcionesCoincidentes.first : null;
-        textoGanador = opt?.textoOpcion ?? "Anónimo";
+        textoGanador = opt?.textoOpcion ?? ganador['texto_opcion'] ?? "Sin datos";
       } else {
         textoGanador = "Valor: ${ganador['valor_numerico'] ?? '-'}";
       }

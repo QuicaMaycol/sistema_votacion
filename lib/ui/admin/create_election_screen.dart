@@ -70,6 +70,44 @@ class _CreateElectionScreenState extends State<CreateElectionScreen> {
     });
   }
 
+  Future<void> _pickDateTime(bool isStart) async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: isStart ? _fechaInicio : _fechaFin,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+
+    if (pickedDate != null) {
+      if (mounted) {
+        final TimeOfDay? pickedTime = await showTimePicker(
+          context: context,
+          initialTime: TimeOfDay.fromDateTime(isStart ? _fechaInicio : _fechaFin),
+        );
+
+        if (pickedTime != null) {
+          setState(() {
+            final newDate = DateTime(
+              pickedDate.year,
+              pickedDate.month,
+              pickedDate.day,
+              pickedTime.hour,
+              pickedTime.minute,
+            );
+            if (isStart) {
+              _fechaInicio = newDate;
+              if (_fechaFin.isBefore(_fechaInicio)) {
+                _fechaFin = _fechaInicio.add(const Duration(hours: 1));
+              }
+            } else {
+              _fechaFin = newDate;
+            }
+          });
+        }
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_preguntas.isEmpty) {
@@ -141,10 +179,27 @@ class _CreateElectionScreenState extends State<CreateElectionScreen> {
                 validator: (v) => v!.isEmpty ? 'Requerido' : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _descController,
-                decoration: const InputDecoration(labelText: 'Descripción'),
-                maxLines: 2,
+              const SizedBox(height: 16),
+              const Text('Cronograma', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickDateTime(true),
+                      icon: const Icon(Icons.calendar_today),
+                      label: Text('Inicio: ${_fechaInicio.toString().split('.')[0]}'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _pickDateTime(false),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text('Fin: ${_fechaFin.toString().split('.')[0]}'),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 24),
               const Text('Preguntas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),

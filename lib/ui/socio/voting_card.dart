@@ -217,22 +217,64 @@ class _VotingCardState extends State<VotingCard> {
   }
 
   Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.blue.shade600,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
-      ),
-      child: Column(
-        children: [
-          Text(
+    final fechaInicioStr = _formatDate(widget.preguntaData['fecha_inicio']);
+    final fechaFinStr = _formatDate(widget.preguntaData['fecha_fin']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.blue.shade600,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+          ),
+          child: Text(
             widget.preguntaData['titulo_eleccion']?.toString().toUpperCase() ?? 'ELECCIÓN',
             style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5),
           ),
+        ),
+        if (fechaInicioStr != null && fechaFinStr != null) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _headerDateItem(Icons.calendar_today_rounded, 'Inicia: $fechaInicioStr'),
+              const SizedBox(width: 16),
+              _headerDateItem(Icons.event_busy_rounded, 'Finaliza: $fechaFinStr'),
+            ],
+          ),
         ],
-      ),
+      ],
     );
+  }
+
+  Widget _headerDateItem(IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 12, color: Colors.grey.shade600),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+        ),
+      ],
+    );
+  }
+
+  String? _formatDate(dynamic date) {
+    if (date == null) return null;
+    try {
+      final dt = DateTime.parse(date.toString()).toLocal();
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      final year = dt.year;
+      final hour = dt.hour.toString().padLeft(2, '0');
+      final minute = dt.minute.toString().padLeft(2, '0');
+      return '$day/$month/$year $hour:$minute';
+    } catch (_) {
+      return null;
+    }
   }
 
   Widget _buildCandidatesList() {

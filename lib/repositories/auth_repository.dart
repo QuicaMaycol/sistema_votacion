@@ -45,14 +45,17 @@ class AuthRepository {
 
   /// Inicia el flujo de recuperación de contraseña
   Future<void> recoverPassword(String email) async {
-    // Si es Web, redirigimos a la URL actual. Si es Mobile, al esquema deep link.
-    final String redirectTo = kIsWeb 
-      ? Uri.base.origin 
-      : 'io.supabase.votaciones://reset-password';
+    // Intentamos enviar el correo sin redirectTo primero para evitar problemas 
+    // de configuración de origen en el servidor que causen el 401.
+    await _client.auth.resetPasswordForEmail(email);
+  }
 
-    await _client.auth.resetPasswordForEmail(
-      email,
-      redirectTo: redirectTo,
+  /// Verifica el código OTP enviado al correo para recuperación
+  Future<AuthResponse> verifyRecoveryOTP(String email, String token) async {
+    return await _client.auth.verifyOTP(
+      email: email,
+      token: token,
+      type: OtpType.recovery,
     );
   }
 

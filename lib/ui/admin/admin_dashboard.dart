@@ -12,6 +12,7 @@ import 'election_control_screen.dart';
 import 'admin_home_tab.dart';
 import 'admin_padron_screen.dart';
 import 'reports_dashboard.dart';
+import '../../reporte/reporte_screen.dart';
 import '../../services/vote_service.dart';
 
 class AdminDashboard extends StatefulWidget {
@@ -64,14 +65,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
     if (profile == null) return;
 
     try {
-      // Buscamos heartbeats de los últimos 45 segundos (con margen de 3 ciclos)
-      final limitTime = DateTime.now().subtract(const Duration(seconds: 45)).toIso8601String();
+      final response = await Supabase.instance.client.rpc('get_usuarios_en_linea', params: {
+        'p_empresa_id': profile.empresaId,
+      });
       
-      final data = await Supabase.instance.client
-          .from('presence_heartbeat')
-          .select('user_id')
-          .gt('last_seen', limitTime);
-      
+      final List<dynamic> data = response as List<dynamic>;
       final ids = <String>{};
       for (var row in data) {
         ids.add(row['user_id'] as String);
@@ -84,7 +82,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         });
       }
     } catch (e) {
-      debugPrint('Error polling presence: $e');
+      debugPrint('Error polling presence via RPC: $e');
     }
   }
 
@@ -105,7 +103,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
       _buildRequestsTab(profile.empresaId),
       _buildSociosTab(profile.empresaId),
       _buildTeamTab(profile.empresaId),
-      ReportsDashboard(empresaId: profile.empresaId),
+      const ReporteScreen(),
     ];
 
     return Scaffold(
@@ -461,25 +459,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         if (snapshot.hasError) return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
         
         final socios = snapshot.data ?? [];
-        if (socios.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildEmptyStateInTab('No hay socios registrados.'),
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context, 
-                    MaterialPageRoute(builder: (_) => AdminPadronScreen(empresaId: empresaId))
-                  ).then((_) => setState((){})),
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Cargar Padrón Masivo'),
-                )
-              ],
-            )
-          );
-        }
 
         return Column(
           children: [
@@ -492,19 +471,35 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text('Padrón de Socios', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
-                      ElevatedButton.icon(
-                        onPressed: () => Navigator.push(
-                          context, 
-                          MaterialPageRoute(builder: (_) => AdminPadronScreen(empresaId: empresaId))
-                        ).then((_) => setState((){})),
-                        icon: const Icon(Icons.upload_file, size: 18),
-                        label: const Text('Cargar / Actualizar Masivo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: () => _showAddSocioDialog(empresaId),
+                            icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
+                            label: const Text('Agregar Socio', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (_) => AdminPadronScreen(empresaId: empresaId))
+                            ).then((_) => setState((){})),
+                            icon: const Icon(Icons.upload_file, size: 18),
+                            label: const Text('Cargar Masivo', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -515,85 +510,87 @@ class _AdminDashboardState extends State<AdminDashboard> {
               child: Center(
                 child: Container(
                   constraints: const BoxConstraints(maxWidth: 900),
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: socios.length,
-                    itemBuilder: (context, index) {
-                      final s = socios[index];
-                      final bool isActive = s['estado_acceso'] == 'ACTIVO';
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.grey.shade100),
-                        ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                          leading: Stack(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: isActive ? Colors.green.shade50 : Colors.red.shade50,
-                                child: Text(s['nombre'][0].toUpperCase(), style: TextStyle(color: isActive ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
-                              ),
-                              if (_onlineUserIds.contains(s['id']))
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: Container(
-                                    width: 10,
-                                    height: 10,
-                                    decoration: BoxDecoration(
-                                      color: Colors.greenAccent.shade700,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: Colors.white, width: 2),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          title: Text(s['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                  child: socios.isEmpty 
+                    ? _buildEmptyStateInTab('No hay socios registrados.')
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        itemCount: socios.length,
+                        itemBuilder: (context, index) {
+                          final s = socios[index];
+                          final bool isActive = s['estado_acceso'] == 'ACTIVO';
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade100),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                              leading: Stack(
                                 children: [
-                                  Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                                  CircleAvatar(
+                                    backgroundColor: isActive ? Colors.green.shade50 : Colors.red.shade50,
+                                    child: Text(s['nombre'][0].toUpperCase(), style: TextStyle(color: isActive ? Colors.green : Colors.red, fontWeight: FontWeight.bold)),
+                                  ),
                                   if (_onlineUserIds.contains(s['id']))
-                                    Container(
-                                      margin: const EdgeInsets.only(left: 8),
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.shade100,
-                                        borderRadius: BorderRadius.circular(4),
+                                    Positioned(
+                                      right: 0,
+                                      bottom: 0,
+                                      child: Container(
+                                        width: 10,
+                                        height: 10,
+                                        decoration: BoxDecoration(
+                                          color: Colors.greenAccent.shade700,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(color: Colors.white, width: 2),
+                                        ),
                                       ),
-                                      child: Text('EN LÍNEA', style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
                                     ),
                                 ],
                               ),
-                              if (s['email'] != null && s['email'].toString().isNotEmpty)
-                                Text(s['email'], style: TextStyle(color: Colors.blue.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
-                            ],
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (isActive)
-                                _actionIconButton(Icons.block_rounded, Colors.red, () => _handleApproval(s['id'], EstadoUsuario.BLOQUEADO))
-                              else
-                                _actionIconButton(Icons.check_circle_outline_rounded, Colors.green, () => _handleApproval(s['id'], EstadoUsuario.ACTIVO)),
-                              const SizedBox(width: 8),
-                              _actionIconButton(
-                                Icons.delete_outline_rounded, 
-                                Colors.redAccent, 
-                                () => _confirmDeleteSocio(s)
+                              title: Text(s['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text('DNI: ${s['dni']} • ${s['estado_acceso']}', style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                                      if (_onlineUserIds.contains(s['id']))
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Colors.green.shade100,
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text('EN LÍNEA', style: TextStyle(color: Colors.green.shade800, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        ),
+                                    ],
+                                  ),
+                                  if (s['email'] != null && s['email'].toString().isNotEmpty)
+                                    Text(s['email'], style: TextStyle(color: Colors.blue.shade600, fontSize: 12, fontWeight: FontWeight.w500)),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (isActive)
+                                    _actionIconButton(Icons.block_rounded, Colors.red, () => _handleApproval(s['id'], EstadoUsuario.BLOQUEADO))
+                                  else
+                                    _actionIconButton(Icons.check_circle_outline_rounded, Colors.green, () => _handleApproval(s['id'], EstadoUsuario.ACTIVO)),
+                                  const SizedBox(width: 8),
+                                  _actionIconButton(
+                                    Icons.delete_outline_rounded, 
+                                    Colors.redAccent, 
+                                    () => _confirmDeleteSocio(s)
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                 ),
               ),
             ),
@@ -735,6 +732,102 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 }
               },
               child: const Text('Crear Usuario'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddSocioDialog(String empresaId) {
+    final nameController = TextEditingController();
+    final dniController = TextEditingController();
+    final emailController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Registrar Socio Manualmente'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Todos los campos son obligatorios.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: nameController, 
+                  decoration: const InputDecoration(
+                    labelText: 'Nombre Completo',
+                    prefixIcon: Icon(Icons.person_outline),
+                  )
+                ),
+                TextField(
+                  controller: dniController, 
+                  decoration: const InputDecoration(
+                    labelText: 'DNI / Identificación',
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                TextField(
+                  controller: emailController, 
+                  decoration: const InputDecoration(
+                    labelText: 'Correo Electrónico',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(context), 
+              child: const Text('Cancelar')
+            ),
+            ElevatedButton(
+              onPressed: isSaving ? null : () async {
+                final nombre = nameController.text.trim();
+                final dni = dniController.text.trim();
+                final email = emailController.text.trim();
+
+                if (nombre.isEmpty || dni.isEmpty || email.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Por favor, completa todos los campos.')),
+                  );
+                  return;
+                }
+
+                setDialogState(() => isSaving = true);
+                try {
+                  await _authService.addSocioManual(
+                    nombre: nombre,
+                    dni: dni,
+                    email: email,
+                    empresaId: empresaId,
+                  );
+                  if (mounted) {
+                    Navigator.pop(context);
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Socio registrado exitosamente.'))
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e'))
+                    );
+                  }
+                } finally {
+                  if (mounted) setDialogState(() => isSaving = false);
+                }
+              },
+              child: isSaving 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Registrar Socio'),
             ),
           ],
         ),

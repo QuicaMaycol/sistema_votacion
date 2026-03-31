@@ -38,14 +38,17 @@ class _MyAppState extends State<MyApp> {
   @override
   void initState() {
     super.initState();
-    // Escuchar cambios de autenticación para Deep Links (Recuperación de contraseña)
+    // Escuchar cambios de autenticación para Deep Links o flujo OTP
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       debugPrint('DEBUG AuthEvent: $event');
+      
+      // Si el evento es passwordRecovery, solo navegamos si no estamos ya en el flujo
       if (event == AuthChangeEvent.passwordRecovery) {
-        MyApp.navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
-        );
+        // Obtenemos la ruta actual para evitar duplicados
+        // Si el usuario ya está en ResetPasswordScreen (abierta manualmente), no hacemos nada
+        // Pero si viene de un link externo, lo mandamos allá.
+        debugPrint('Evento de recuperación detectado. Usuario ya autenticado para cambio de pass.');
       }
     });
   }

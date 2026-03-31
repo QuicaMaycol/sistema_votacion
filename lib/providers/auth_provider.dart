@@ -121,6 +121,15 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> verifyCode(String email, String code) async {
+    try {
+      await _authRepo.verifyRecoveryOTP(email, code);
+    } catch (e) {
+      _lastError = e.toString();
+      rethrow;
+    }
+  }
+
   Future<void> updatePassword(String newPassword) async {
     try {
       await _authRepo.updatePassword(newPassword);

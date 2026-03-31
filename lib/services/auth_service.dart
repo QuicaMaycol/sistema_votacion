@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../repositories/auth_repository.dart';
 import '../models/perfil_empresa.dart';
 import '../models/enums.dart';
@@ -251,6 +252,10 @@ class AuthService {
     await _authRepo.recoverPassword(email);
   }
 
+  Future<void> verifyCode(String email, String code) async {
+    await _authRepo.verifyRecoveryOTP(email, code);
+  }
+
   Future<void> updatePassword(String newPassword) async {
     await _authRepo.updatePassword(newPassword);
   }
@@ -263,5 +268,32 @@ class AuthService {
         .from('perfiles')
         .delete()
         .eq('id', userId);
+  }
+
+  /// REGISTRO MANUAL DE SOCIO (Por Administrador)
+  Future<void> addSocioManual({
+    required String nombre,
+    required String dni,
+    required String email,
+    required String empresaId,
+  }) async {
+    try {
+      final String generatedId = const Uuid().v4();
+      await _client
+          .schema('votaciones')
+          .from('perfiles')
+          .insert({
+            'id': generatedId,
+            'nombre': nombre,
+            'dni': dni,
+            'email': email,
+            'empresa_id': empresaId,
+            'rol': RolUsuario.SOCIO.toShortString(),
+            'estado_acceso': EstadoUsuario.ACTIVO.toShortString(),
+          });
+    } catch (e) {
+      debugPrint('Error en el registro manual de socio: $e');
+      throw 'No se pudo registrar al socio manualmente: $e';
+    }
   }
 }
